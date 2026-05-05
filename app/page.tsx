@@ -1,8 +1,26 @@
 "use client";
 import { useState, useRef } from "react";
-import { Menu, Sun, Moon, Plus, ArrowUp, Check, Sparkles, X, MessageSquare, Square } from "lucide-react";
+import { Menu, Sun, Moon, Plus, ArrowUp, Check, Sparkles, X, MessageSquare, Square, SquarePen } from "lucide-react";
 
 const AVAILABLE_MODELS = ["Perplexity", "Gemini", "Grok", "ChatGPT", "Claude", "DeepSeek"];
+
+// FIXED: The display names now correctly match their actual brand architectures!
+const MODEL_VERSIONS: Record<string, string> = {
+  "Perplexity": "sonar-pro",
+  "Gemini": "gemini-2.5-flash",
+  "Grok": "grok-2-beta",
+  "ChatGPT": "gpt-4o",
+  "Claude": "claude-3.5-sonnet",
+  "DeepSeek": "deepseek-chat"
+};
+
+type ChatSession = {
+  id: string;
+  title: string; 
+  prompt: string;
+  models: string[];
+  results: Record<string, string>;
+};
 
 export default function Home() {
   const [isDark, setIsDark] = useState(true);
@@ -12,12 +30,13 @@ export default function Home() {
   const [sentPrompt, setSentPrompt] = useState(""); 
   
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
-  // NEW STATE: Tracks if the user has clicked "Proceed"
   const [hasProceeded, setHasProceeded] = useState(false);
   
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<Record<string, string>>({});
-  const [chatHistory, setChatHistory] = useState<string[]>([]);
+  
+  const [chatHistory, setChatHistory] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -37,9 +56,6 @@ export default function Home() {
     const currentPrompt = prompt;
     setSentPrompt(currentPrompt);
     setPrompt(""); 
-    
-    setChatHistory((prevHistory) => [currentPrompt, ...prevHistory]);
-    
     setLoading(true);
     setShowModelMenu(false);
     
@@ -48,6 +64,7 @@ export default function Home() {
     setResults(loadingResults);
 
     abortControllerRef.current = new AbortController();
+    let finalSessionResults: Record<string, string> = {};
 
     try {
       const response = await fetch("/api/compare", {
@@ -58,26 +75,66 @@ export default function Home() {
       });
       
       const data = await response.json();
-      
-      const finalResults: Record<string, string> = {};
       selectedModels.forEach(m => {
-        finalResults[m] = data[m] || "Error retrieving response.";
+        finalSessionResults[m] = data[m] || "Error retrieving response.";
       });
-      setResults(finalResults);
+      setResults(finalSessionResults);
 
     } catch (error: any) {
       if (error.name === 'AbortError') {
-        const stoppedResults: Record<string, string> = {};
-        selectedModels.forEach(m => stoppedResults[m] = "Generation stopped by user.");
-        setResults(stoppedResults);
+        selectedModels.forEach(m => finalSessionResults[m] = "Generation stopped by user.");
       } else {
-        const errorResults: Record<string, string> = {};
-        selectedModels.forEach(m => errorResults[m] = "Network error.");
-        setResults(errorResults);
+        selectedModels.forEach(m => finalSessionResults[m] = "Network error.");
       }
+      setResults(finalSessionResults);
     } finally {
       setLoading(false);
       abortControllerRef.current = null;
+      
+      if (activeSessionId) {
+        setChatHistory((prev) => prev.map(session => 
+          session.id === activeSessionId 
+            ? { ...session, prompt: currentPrompt, models: [...selectedModels], results: finalSessionResults }
+            : session
+        ));
+      } else {
+        const newSessionId = Date.now().toString();
+        setChatHistory((prev) => [
+          {
+            id: newSessionId,
+            title: currentPrompt, 
+            prompt: currentPrompt,
+            models: [...selectedModels],
+            results: finalSessionResults,
+          },
+          ...prev
+        ]);
+        setActiveSessionId(newSessionId); 
+      }
+    }
+  };
+
+  const loadChat = (session: ChatSession) => {
+    setActiveSessionId(session.id); 
+    setPrompt(""); 
+    setSentPrompt(session.prompt); 
+    setSelectedModels(session.models); 
+    setResults(session.results); 
+    setHasProceeded(true); 
+    
+    if (window.innerWidth < 768) {
+      setShowHistory(false);
+    }
+  };
+
+  const handleNewChat = () => {
+    setActiveSessionId(null);
+    setPrompt("");
+    setSentPrompt("");
+    setResults({});
+    setHasProceeded(false); 
+    if (window.innerWidth < 768) {
+      setShowHistory(false);
     }
   };
 
@@ -103,7 +160,7 @@ export default function Home() {
   return (
     <div className={`h-screen flex flex-col transition-colors duration-300 font-sans overflow-hidden ${bgClass}`}>
       
-      <header className="flex-none flex justify-between items-center px-4 py-3 z-10 relative">
+      <header className="flex-none flex justify-between items-center px-4 py-3 z-10 relative border-b border-transparent">
         <div className="flex items-center gap-4">
           <button 
             onClick={() => setShowHistory(!showHistory)}
@@ -131,36 +188,46 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="flex-1 flex overflow-hidden relative w-full">
+      <div className="flex-1 flex overflow-hidden w-full relative">
         
-        {/* HISTORY SIDEBAR - Cleaned up borders and boxes */}
-        <div className={`absolute top-0 left-0 h-full w-64 md:w-72 shadow-2xl z-40 transition-transform duration-300 flex flex-col ${showHistory ? 'translate-x-0' : '-translate-x-full'} ${elementBgClass} ${borderClass} border-r`}>
-          <div className="p-4 flex justify-between items-center border-b border-white/5">
+        <div 
+          className={`flex-none h-full transition-all duration-300 ease-in-out flex flex-col ${elementBgClass} ${
+            showHistory ? `w-64 md:w-72 opacity-100 border-r ${borderClass}` : "w-0 opacity-0 border-r-0 border-transparent overflow-hidden"
+          }`}
+        >
+          <div className="p-4 flex justify-between items-center border-b border-white/5 min-w-[16rem]">
             <span className="font-medium tracking-wide">Recent Chats</span>
             <button onClick={() => setShowHistory(false)} className="p-1 rounded-full hover:bg-white/10">
               <X size={20} />
             </button>
           </div>
           
-          <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+          <div className="flex-1 overflow-y-auto p-4 custom-scrollbar min-w-[16rem]">
             {chatHistory.length === 0 ? (
               <div className="text-sm opacity-50 text-center mt-4">
                 No recent chats.
               </div>
             ) : (
-              chatHistory.map((historyItem, index) => (
-                <div key={index} className={`py-3 flex items-center gap-3 cursor-pointer transition-colors ${isDark ? 'hover:text-white text-gray-300' : 'hover:text-black text-gray-600'}`}>
+              chatHistory.map((session) => (
+                <div 
+                  key={session.id} 
+                  onClick={() => loadChat(session)}
+                  className={`py-3 px-3 rounded-xl flex items-center gap-3 cursor-pointer transition-colors ${
+                    activeSessionId === session.id 
+                      ? (isDark ? 'bg-white/10 text-white' : 'bg-black/10 text-black') 
+                      : (isDark ? 'hover:bg-white/5 text-gray-400 hover:text-white' : 'hover:bg-black/5 text-gray-600 hover:text-black')
+                  }`}
+                >
                   <MessageSquare size={16} className="opacity-60 flex-none" />
-                  <span className="text-sm truncate">{historyItem}</span>
+                  <span className="text-sm truncate">{session.title}</span>
                 </div>
               ))
             )}
           </div>
         </div>
 
-        <main className="flex-1 flex flex-col md:flex-row gap-4 p-4 md:p-6 overflow-hidden max-w-7xl mx-auto w-full">
+        <main className="flex-1 flex flex-col md:flex-row gap-4 p-4 md:p-6 overflow-hidden w-full transition-all duration-300 ease-in-out">
           
-          {/* THE NEW INTEGRATED LANDING PAGE */}
           {!hasProceeded ? (
             <div className="flex-1 flex flex-col items-center justify-center w-full h-full select-none overflow-y-auto pb-10">
               <Sparkles size={64} className="text-[#a8c7fa] mb-6 animate-pulse" />
@@ -204,15 +271,17 @@ export default function Home() {
             </div>
           ) : (
             
-            // THE CHAT INTERFACE
             selectedModels.map((modelName) => (
-              <div key={modelName} className={`flex-1 flex flex-col h-full rounded-2xl border ${borderClass} ${elementBgClass} overflow-hidden`}>
-                
-                {/* BIGGER BOLD MODEL NAME */}
+              <div key={modelName} className={`flex-1 flex flex-col h-full rounded-2xl border ${borderClass} ${elementBgClass} overflow-hidden transition-all duration-300`}>
                 <div className={`px-6 py-5 flex justify-between items-center border-b ${borderClass} flex-none`}>
-                  <div className="flex items-center gap-2 font-bold text-xl md:text-2xl tracking-tight">
+                  
+                  <div className="flex items-baseline gap-2 font-bold text-xl md:text-2xl tracking-tight">
                     {modelName}
+                    <span className="text-xs md:text-sm font-normal opacity-50 tracking-normal">
+                      ({MODEL_VERSIONS[modelName] || "v1.0"})
+                    </span>
                   </div>
+                  
                   {loading && <span className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></span>}
                 </div>
                 
@@ -225,11 +294,19 @@ export default function Home() {
         </main>
       </div>
 
-      {/* FOOTER INPUT - Only visible after Proceeding */}
       {hasProceeded && (
-        <footer className="flex-none px-4 md:px-8 pb-6 flex items-end gap-3 max-w-4xl mx-auto w-full relative z-10 animate-in slide-in-from-bottom-10">
+        <footer className="flex-none px-4 md:px-8 pb-6 flex items-end gap-3 max-w-5xl mx-auto w-full relative z-10 animate-in slide-in-from-bottom-10">
           
-          <div className="relative">
+          <button 
+            onClick={handleNewChat}
+            title="New Chat"
+            className={`h-12 px-4 flex-none flex items-center justify-center gap-2 rounded-full transition-colors font-medium text-sm ${isDark ? 'bg-[#1e1f20] hover:bg-white/10 text-[#e3e3e3]' : 'bg-[#f0f4f9] hover:bg-black/5 text-gray-700'}`}
+          >
+            <SquarePen size={18} />
+            <span className="hidden sm:inline">New Chat</span>
+          </button>
+
+          <div className="relative flex-none">
             <button 
               onClick={() => setShowModelMenu(!showModelMenu)}
               className={`w-12 h-12 flex items-center justify-center rounded-full transition-colors ${isDark ? 'bg-[#1e1f20] hover:bg-white/10' : 'bg-[#f0f4f9] hover:bg-black/5'}`}
