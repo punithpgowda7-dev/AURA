@@ -169,6 +169,11 @@ export default function Home() {
       setIsAuthenticated(true);
       setAuthStep(3);
       loadFromCloud(savedEmail); 
+      
+      // Update status to online when auto-logging in via local storage
+      if (firebaseConfig.apiKey) {
+        updateDoc(doc(db, "users", savedEmail), { isLoggedOut: false, forceLogout: false }).catch(() => {});
+      }
     }
   }, []);
 
@@ -244,7 +249,8 @@ export default function Home() {
           email: userEmail,
           lastLogin: new Date().toISOString(),
           elapsedSeconds: existingElapsed,
-          forceLogout: false // Reset force logout so they can get in
+          forceLogout: false, // Reset force logout
+          isLoggedOut: false  // TELLS ADMIN DASHBOARD THEY ARE ONLINE!
         }, { merge: true });
       } catch (e) {}
 
@@ -256,7 +262,15 @@ export default function Home() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // 1. Tell Firebase the user is offline BEFORE clearing local data!
+    if (userEmail && firebaseConfig.apiKey) {
+      try {
+        await updateDoc(doc(db, "users", userEmail), { isLoggedOut: true });
+      } catch (e) { console.error("Failed to update logout status", e); }
+    }
+
+    // 2. Clear local data
     localStorage.removeItem("aura_user_email");
     localStorage.removeItem("aura_user_name");
     setIsAuthenticated(false);

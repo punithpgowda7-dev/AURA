@@ -24,6 +24,7 @@ type UserData = {
   lastLogin: string;
   elapsedSeconds: number;
   isBanned?: boolean;
+  isLoggedOut?: boolean; // Added to track offline status
 };
 
 export default function AdminDashboard() {
@@ -33,7 +34,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(false);
 
   // YOUR SECRET ADMIN PASSWORD
-  const ADMIN_PASSWORD = "PUNI";
+  const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD;
 
   // 1. LIVE WIRE TO DATABASE (Real-time updates)
   useEffect(() => {
@@ -44,12 +45,17 @@ export default function AdminDashboard() {
       const fetchedUsers: UserData[] = [];
       querySnapshot.forEach((doc) => {
         const data = doc.data();
+        
+        // --- Hide users who are banned or forcefully logged out ---
+        if (data.forceLogout || data.isBanned) return;
+
         fetchedUsers.push({
           email: doc.id,
           name: data.name || "Unknown",
           lastLogin: data.lastLogin || "",
           elapsedSeconds: data.elapsedSeconds || 0,
           isBanned: data.isBanned || false,
+          isLoggedOut: data.isLoggedOut || false, // Capture offline status
         });
       });
       // Sort by newest login first
@@ -69,8 +75,8 @@ export default function AdminDashboard() {
       setUsers((prevUsers) => 
         prevUsers.map((user) => ({
           ...user,
-          // Visually tick up the time by 1 second for everyone not banned
-          elapsedSeconds: user.isBanned ? user.elapsedSeconds : user.elapsedSeconds + 1
+          // Only visually tick up the time if they are NOT banned AND NOT logged out
+          elapsedSeconds: (user.isBanned || user.isLoggedOut) ? user.elapsedSeconds : user.elapsedSeconds + 1
         }))
       );
     }, 1000);
@@ -173,10 +179,11 @@ export default function AdminDashboard() {
             <thead>
               <tr className="bg-[#4472c4] text-white">
                 <th className="p-4 font-semibold text-sm border-r border-white/20 w-16 text-center">SL No</th>
-                <th className="p-4 font-semibold text-sm border-r border-white/20">NAME</th>
-                <th className="p-4 font-semibold text-sm border-r border-white/20">E-MAIL</th>
+                <th className="p-4 font-semibold text-sm border-r border-white/20 w-48">NAME</th>
+                <th className="p-4 font-semibold text-sm border-r border-white/20 min-w-[250px]">E-MAIL</th>
                 <th className="p-4 font-semibold text-sm border-r border-white/20 w-32">Elapsed Time</th>
-                <th className="p-4 font-semibold text-sm border-r border-white/20 w-48">LOGGED ON</th>
+                <th className="p-4 font-semibold text-sm border-r border-white/20 w-40">LOGGED ON</th>
+                <th className="p-4 font-semibold text-sm border-r border-white/20 w-40">ACTIVE STATUS</th>
                 <th className="p-4 font-semibold text-sm border-r border-white/20 text-center w-28">Action 1</th>
                 <th className="p-4 font-semibold text-sm text-center w-28">Action 2</th>
               </tr>
@@ -184,11 +191,11 @@ export default function AdminDashboard() {
             <tbody>
               {loading && users.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-gray-500">Connecting to live database...</td>
+                  <td colSpan={8} className="p-8 text-center text-gray-500">Connecting to live database...</td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-gray-500">No users found in database.</td>
+                  <td colSpan={8} className="p-8 text-center text-gray-500">No users currently logged in.</td>
                 </tr>
               ) : (
                 users.map((user, index) => {
@@ -199,20 +206,39 @@ export default function AdminDashboard() {
                     <tr key={user.email} className={`${rowBg} hover:bg-[#d6e0f0] transition-colors`}>
                       <td className="p-4 text-sm font-medium border-r border-gray-300 text-center">{index + 1}.</td>
                       <td className="p-4 text-sm font-bold border-r border-gray-300">
-                        {user.name} 
-                        {user.isBanned && <span className="ml-2 text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded uppercase font-bold">Banned</span>}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span>{user.name}</span>
+                          {user.isBanned && (
+                            <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded uppercase font-bold tracking-wider">Banned</span>
+                          )}
+                        </div>
                       </td>
-                      <td className="p-4 text-sm border-r border-gray-300 text-gray-700">{user.email}</td>
-                      <td className="p-4 text-sm font-mono border-r border-gray-300 font-semibold text-blue-700">
+                      <td className="p-4 text-sm border-r border-gray-300 text-gray-700 break-all">
+                        {user.email}
+                      </td>
+                      <td className={`p-4 text-sm font-mono border-r border-gray-300 font-semibold ${user.isLoggedOut ? 'text-gray-500' : 'text-blue-700'}`}>
                         {formatElapsedTime(user.elapsedSeconds)}
                       </td>
                       <td className="p-4 text-sm border-r border-gray-300 text-gray-700">
                         {formatDateTime(user.lastLogin)}
                       </td>
+                      <td className="p-4 text-sm border-r border-gray-300 font-medium">
+                        {user.isBanned || user.isLoggedOut ? (
+                          <div className="flex items-center gap-2 text-red-600 font-bold">
+                            <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                            Inactive
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 text-green-600 font-bold">
+                            <span className="w-2.5 h-2.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse"></span>
+                            Active
+                          </div>
+                        )}
+                      </td>
                       <td className="p-4 border-r border-gray-300 text-center">
                         <button 
                           onClick={() => forceLogoutUser(user.email)}
-                          disabled={user.isBanned}
+                          disabled={user.isBanned || user.isLoggedOut}
                           className="flex items-center justify-center gap-1 w-full bg-yellow-100 hover:bg-yellow-200 text-yellow-800 font-bold py-2 rounded border border-yellow-300 disabled:opacity-50 transition-colors text-xs"
                         >
                           <LogOut size={14} /> Log Out
