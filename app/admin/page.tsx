@@ -1,8 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
 import { initializeApp, getApps } from "firebase/app";
-import { getFirestore, collection, getDocs, doc, updateDoc } from "firebase/firestore";
-import { Lock, LogOut, Ban, Users } from "lucide-react";
+import { getFirestore, collection, onSnapshot, doc, updateDoc } from "firebase/firestore";
+import { Lock, LogOut, Ban, Users, Activity } from "lucide-react";
 
 // Exact same secure config as your main page
 const firebaseConfig = {
@@ -33,12 +33,14 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(false);
 
   // YOUR SECRET ADMIN PASSWORD
-  const ADMIN_PASSWORD = "AURA_ADMIN_2026";
+  const ADMIN_PASSWORD = "PUNI";
 
-  const fetchUsers = async () => {
+  // 1. LIVE WIRE TO DATABASE (Real-time updates)
+  useEffect(() => {
+    if (!isAuthenticated) return;
     setLoading(true);
-    try {
-      const querySnapshot = await getDocs(collection(db, "users"));
+
+    const unsubscribe = onSnapshot(collection(db, "users"), (querySnapshot) => {
       const fetchedUsers: UserData[] = [];
       querySnapshot.forEach((doc) => {
         const data = doc.data();
@@ -50,18 +52,36 @@ export default function AdminDashboard() {
           isBanned: data.isBanned || false,
         });
       });
+      // Sort by newest login first
+      fetchedUsers.sort((a, b) => new Date(b.lastLogin).getTime() - new Date(a.lastLogin).getTime());
       setUsers(fetchedUsers);
-    } catch (e) {
-      console.error("Error fetching users", e);
-    }
-    setLoading(false);
-  };
+      setLoading(false);
+    });
+
+    return () => unsubscribe(); // Cleanup listener on unmount
+  }, [isAuthenticated]);
+
+  // 2. LIVE STOPWATCH (Visual 1-second tick)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    
+    const ticker = setInterval(() => {
+      setUsers((prevUsers) => 
+        prevUsers.map((user) => ({
+          ...user,
+          // Visually tick up the time by 1 second for everyone not banned
+          elapsedSeconds: user.isBanned ? user.elapsedSeconds : user.elapsedSeconds + 1
+        }))
+      );
+    }, 1000);
+
+    return () => clearInterval(ticker);
+  }, [isAuthenticated]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (passwordInput === ADMIN_PASSWORD) {
       setIsAuthenticated(true);
-      fetchUsers();
     } else {
       alert("Incorrect Password.");
       setPasswordInput("");
@@ -71,7 +91,7 @@ export default function AdminDashboard() {
   const forceLogoutUser = async (email: string) => {
     if (confirm(`Are you sure you want to log out ${email}? They will be able to log back in.`)) {
       await updateDoc(doc(db, "users", email), { forceLogout: true });
-      alert(`Forced logout signal sent to ${email}`);
+      // Removed the alert here so it feels more seamless
     }
   };
 
@@ -82,8 +102,6 @@ export default function AdminDashboard() {
         chats: [], // Instantly wipes their history
         forceLogout: true 
       });
-      alert(`${email} has been permanently banned.`);
-      fetchUsers(); // Refresh the list
     }
   };
 
@@ -119,7 +137,7 @@ export default function AdminDashboard() {
             placeholder="Master Password" 
             value={passwordInput}
             onChange={(e) => setPasswordInput(e.target.value)}
-            className="w-full p-4 rounded-xl border border-gray-300 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full p-4 rounded-xl border border-gray-300 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center tracking-widest"
           />
           <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-colors">
             ACCESS SYSTEM
@@ -143,9 +161,10 @@ export default function AdminDashboard() {
               <p className="text-sm text-gray-500 font-medium">System Override & Monitoring</p>
             </div>
           </div>
-          <button onClick={fetchUsers} className="bg-white border border-gray-300 px-4 py-2 rounded-lg font-medium shadow-sm hover:bg-gray-50 transition">
-            {loading ? "Refreshing..." : "Refresh Data"}
-          </button>
+          <div className="flex items-center gap-2 bg-green-50 border border-green-200 text-green-700 px-4 py-2 rounded-lg font-medium shadow-sm">
+            <Activity size={18} className="animate-pulse" />
+            <span>Live Data Active</span>
+          </div>
         </div>
 
         {/* BLUE AND WHITE TABLE EXACTLY AS REQUESTED */}
@@ -156,14 +175,18 @@ export default function AdminDashboard() {
                 <th className="p-4 font-semibold text-sm border-r border-white/20 w-16 text-center">SL No</th>
                 <th className="p-4 font-semibold text-sm border-r border-white/20">NAME</th>
                 <th className="p-4 font-semibold text-sm border-r border-white/20">E-MAIL</th>
-                <th className="p-4 font-semibold text-sm border-r border-white/20">Elapsed Time</th>
-                <th className="p-4 font-semibold text-sm border-r border-white/20">LOGGED ON</th>
+                <th className="p-4 font-semibold text-sm border-r border-white/20 w-32">Elapsed Time</th>
+                <th className="p-4 font-semibold text-sm border-r border-white/20 w-48">LOGGED ON</th>
                 <th className="p-4 font-semibold text-sm border-r border-white/20 text-center w-28">Action 1</th>
                 <th className="p-4 font-semibold text-sm text-center w-28">Action 2</th>
               </tr>
             </thead>
             <tbody>
-              {users.length === 0 ? (
+              {loading && users.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="p-8 text-center text-gray-500">Connecting to live database...</td>
+                </tr>
+              ) : users.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="p-8 text-center text-gray-500">No users found in database.</td>
                 </tr>
@@ -175,9 +198,12 @@ export default function AdminDashboard() {
                   return (
                     <tr key={user.email} className={`${rowBg} hover:bg-[#d6e0f0] transition-colors`}>
                       <td className="p-4 text-sm font-medium border-r border-gray-300 text-center">{index + 1}.</td>
-                      <td className="p-4 text-sm font-bold border-r border-gray-300">{user.name}</td>
+                      <td className="p-4 text-sm font-bold border-r border-gray-300">
+                        {user.name} 
+                        {user.isBanned && <span className="ml-2 text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded uppercase font-bold">Banned</span>}
+                      </td>
                       <td className="p-4 text-sm border-r border-gray-300 text-gray-700">{user.email}</td>
-                      <td className="p-4 text-sm font-mono border-r border-gray-300">
+                      <td className="p-4 text-sm font-mono border-r border-gray-300 font-semibold text-blue-700">
                         {formatElapsedTime(user.elapsedSeconds)}
                       </td>
                       <td className="p-4 text-sm border-r border-gray-300 text-gray-700">
