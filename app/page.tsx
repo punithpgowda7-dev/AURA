@@ -4,9 +4,9 @@ import { Menu, Sun, Moon, Plus, ArrowUp, Check, Sparkles, X, MessageSquare, Squa
 
 // --- FIREBASE CLOUD DATABASE SETUP ---
 import { initializeApp, getApps } from "firebase/app";
-import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore";
+import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc } from "firebase/firestore";
 
-// Your web app's Firebase configuration (Secured via Environment Variables)
+// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY as string,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN as string,
@@ -16,7 +16,6 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID as string
 };
 
-// Initialize Firebase securely
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const db = getFirestore(app);
 
@@ -46,7 +45,6 @@ const CRITERIA = [
   "7. Reasoning over text", "8. Mixed evaluation", "9. Knowledge Q&A", "10. Common Knowledge"
 ];
 
-// NEW DATA STRUCTURE: Supports multiple messages (turns) per chat
 type Turn = {
   prompt: string;
   results: Record<string, string>;
@@ -59,16 +57,13 @@ type ChatSession = {
   models: string[];
   turns: Turn[]; 
   contextString: string; 
-  // Legacy fields so old Firebase data doesn't crash
   prompt?: string;
   results?: Record<string, string>;
   bestModel?: string | null;
 };
 
 export default function Home() {
-  // --- HYDRATION FIX: Prevents Browser Extensions from crashing Next.js ---
   const [isMounted, setIsMounted] = useState(false);
-
   const [isDark, setIsDark] = useState(true);
 
   // --- AUTHENTICATION STATE ---
@@ -98,12 +93,10 @@ export default function Home() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // --- MOUNT EFFECT (Hydration fix part 2) ---
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     const timer = setTimeout(() => {
       const containers = document.querySelectorAll('.chat-scroll-container');
@@ -112,11 +105,48 @@ export default function Home() {
     return () => clearTimeout(timer);
   }, [activeTurns]);
 
-  // --- CLOUD DATABASE FUNCTIONS (TypeScript Safe) ---
+  // --- ADMIN LISTENER & TIME TRACKER ---
+  useEffect(() => {
+    if (!isAuthenticated || !userEmail || !firebaseConfig.apiKey) return;
+
+    // 1. Listen for Admin Force Logout or Ban
+    const unsub = onSnapshot(doc(db, "users", userEmail), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.isBanned) {
+          alert("Your account has been permanently banned by the Administrator.");
+          handleLogout();
+        } else if (data.forceLogout) {
+          alert("You have been logged out by the Administrator.");
+          handleLogout();
+        }
+      }
+    });
+
+    // 2. Track Elapsed Time (Updates database every 30 seconds)
+    const timeTracker = setInterval(async () => {
+      try {
+        const userRef = doc(db, "users", userEmail);
+        const snap = await getDoc(userRef);
+        if (snap.exists()) {
+          const currentSeconds = snap.data().elapsedSeconds || 0;
+          await updateDoc(userRef, { elapsedSeconds: currentSeconds + 30 });
+        }
+      } catch (e) { console.error("Time track error", e); }
+    }, 30000);
+
+    return () => {
+      unsub();
+      clearInterval(timeTracker);
+    };
+  }, [isAuthenticated, userEmail]);
+
+  // --- CLOUD DATABASE FUNCTIONS ---
   const saveToCloud = async (email: string, history: ChatSession[]) => {
     if (!email || !firebaseConfig.apiKey) return; 
     try {
-      await setDoc(doc(db, "users", email), { chats: history });
+      // Use merge: true so we don't accidentally delete the admin tracking stats
+      await setDoc(doc(db, "users", email), { chats: history }, { merge: true });
     } catch (e) { console.error("Cloud save failed", e); }
   };
 
@@ -130,7 +160,6 @@ export default function Home() {
     } catch (e) { console.error("Cloud load failed", e); }
   };
 
-  // --- PERSISTENT LOGIN ---
   useEffect(() => {
     const savedEmail = localStorage.getItem("aura_user_email");
     const savedName = localStorage.getItem("aura_user_name");
@@ -143,7 +172,6 @@ export default function Home() {
     }
   }, []);
 
-  // --- CLICK AWAY LISTENER ---
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -163,6 +191,18 @@ export default function Home() {
       setTimeout(() => setToastMessage(""), 3000);
       return;
     }
+
+    // CHECK IF BANNED BEFORE SENDING OTP
+    try {
+      const userRef = doc(db, "users", userEmail);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists() && userSnap.data().isBanned) {
+        setToastMessage("Access Denied: This account is permanently banned.");
+        setTimeout(() => setToastMessage(""), 5000);
+        return;
+      }
+    } catch (e) {}
+
     setAuthStep(2);
     setToastMessage("Sending verification code to your email...");
     const uniqueCode = Math.floor(100000 + Math.random() * 900000).toString();
@@ -185,12 +225,29 @@ export default function Home() {
     setTimeout(() => setToastMessage(""), 5000); 
   };
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (otpInput === generatedOtp) {
       setAuthStep(3);
       setIsLaunching(true);
       localStorage.setItem("aura_user_email", userEmail);
       localStorage.setItem("aura_user_name", userName);
+      
+      // Update Admin Tracking Stats on fresh login
+      try {
+        const userRef = doc(db, "users", userEmail);
+        const userSnap = await getDoc(userRef);
+        let existingElapsed = 0;
+        if (userSnap.exists()) existingElapsed = userSnap.data().elapsedSeconds || 0;
+
+        await setDoc(userRef, {
+          name: userName,
+          email: userEmail,
+          lastLogin: new Date().toISOString(),
+          elapsedSeconds: existingElapsed,
+          forceLogout: false // Reset force logout so they can get in
+        }, { merge: true });
+      } catch (e) {}
+
       loadFromCloud(userEmail);
       setTimeout(() => setIsAuthenticated(true), 2000); 
     } else {
@@ -210,7 +267,6 @@ export default function Home() {
     setShowProfileModal(false);
   };
 
-  // --- DASHBOARD LOGIC ---
   const toggleModel = (model: string) => {
     setSelectedModels((prev) => {
       if (prev.includes(model)) return prev.filter((m) => m !== model);
@@ -245,13 +301,11 @@ export default function Home() {
     setLoading(true);
     setShowModelMenu(false);
     
-    // Create optimistic UI Turn
     const loadingResults: Record<string, string> = {};
     AVAILABLE_MODELS.forEach(m => loadingResults[m] = "Generating...");
     
     setActiveTurns(prev => [...prev, { prompt: currentPrompt, results: loadingResults, bestModel: null }]);
 
-    // Context Memory Construction
     let existingContext = "";
     if (activeSessionId) {
       const session = chatHistory.find(s => s.id === activeSessionId);
@@ -289,7 +343,6 @@ export default function Home() {
       
       calculatedWinner = evaluateBestResponse(finalSessionResults, selectedModels);
 
-      // Update the UI Turn with the real data
       const finalTurn = { prompt: currentPrompt, results: finalSessionResults, bestModel: calculatedWinner };
       setActiveTurns(prev => {
         const next = [...prev];
@@ -297,7 +350,6 @@ export default function Home() {
         return next;
       });
 
-      // Update the Database Backend
       const aiResponseToRemember = finalSessionResults[calculatedWinner || selectedModels[0]] || "";
       const newContextAppend = `User: ${currentPrompt}\nAI: ${aiResponseToRemember}\n\n`;
       
@@ -312,7 +364,6 @@ export default function Home() {
           turns: [...currentTurns, finalTurn],
           contextString: existingSession.contextString + newContextAppend
         };
-        // PUSH RECENTLY USED CHAT TO TOP OF LIST
         updatedHistory = [updatedSession, ...chatHistory.filter(s => s.id !== activeSessionId)];
       } else {
         const newSessionId = Date.now().toString();
@@ -337,7 +388,6 @@ export default function Home() {
     setPrompt(""); 
     setSelectedModels(session.models); 
     
-    // BACKWARD COMPATIBILITY: Convert old data formats to new Bubble array format seamlessly
     if (session.turns && session.turns.length > 0) {
       setActiveTurns(session.turns);
     } else if (session.prompt && session.results) {
@@ -349,7 +399,6 @@ export default function Home() {
     setHasProceeded(true); 
     if (window.innerWidth < 768) setShowHistory(false);
     
-    // PUSH LOADED CHAT TO TOP OF LIST
     setChatHistory(prev => {
       const active = prev.find(s => s.id === session.id);
       if (!active) return prev;
@@ -366,18 +415,12 @@ export default function Home() {
     if (window.innerWidth < 768) setShowHistory(false);
   };
 
-  // NEW: Delete Chat Logic
   const deleteChat = (e: React.MouseEvent, idToDelete: string) => {
-    e.stopPropagation(); // Prevents loading the chat when you just want to delete it
-    
+    e.stopPropagation(); 
     const updatedHistory = chatHistory.filter((session) => session.id !== idToDelete);
     setChatHistory(updatedHistory);
-    saveToCloud(userEmail, updatedHistory); // Update Firebase database immediately
-    
-    // If user deletes the chat they are currently looking at, wipe the screen
-    if (activeSessionId === idToDelete) {
-      handleNewChat();
-    }
+    saveToCloud(userEmail, updatedHistory); 
+    if (activeSessionId === idToDelete) handleNewChat();
   };
 
   const handleStop = () => {
@@ -408,12 +451,8 @@ export default function Home() {
   const elementBgClass = isDark ? "bg-[#1e1f20]" : "bg-[#f0f4f9]";
   const borderClass = isDark ? "border-white/10" : "border-gray-200";
 
-  // --- DO NOT RENDER ANYTHING UNTIL HYDRATED ---
   if (!isMounted) return null;
 
-  // ==========================================
-  // --- LOGIN SCREEN RENDER ---
-  // ==========================================
   if (!isAuthenticated) {
     return (
       <div className={`h-screen flex items-center justify-center transition-colors duration-300 font-sans overflow-hidden ${bgClass}`}>
@@ -487,13 +526,9 @@ export default function Home() {
     );
   }
 
-  // ==========================================
-  // --- MAIN DASHBOARD RENDER ---
-  // ==========================================
   return (
     <div className={`h-screen flex flex-col transition-colors duration-300 font-sans overflow-hidden ${bgClass}`}>
       
-      {/* PROFILE INFO MODAL */}
       {showProfileModal && (
         <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in p-4">
           <div className={`w-full max-w-sm rounded-3xl shadow-2xl border ${borderClass} ${elementBgClass} overflow-hidden flex flex-col`}>
@@ -522,7 +557,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* REPORT ANALYSIS MODAL */}
       {showReport && (
         <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in p-4">
           <div className={`w-full max-w-4xl rounded-2xl shadow-2xl border ${borderClass} ${isDark ? 'bg-[#1e1f20]' : 'bg-white'} overflow-hidden flex flex-col max-h-[90vh]`}>
@@ -621,7 +655,6 @@ export default function Home() {
                     <span className="text-sm truncate">{session.title}</span>
                   </div>
                   
-                  {/* TRASH ICON TO DELETE CHAT */}
                   <button 
                     onClick={(e) => deleteChat(e, session.id)} 
                     className={`opacity-0 group-hover:opacity-100 p-1.5 rounded-full hover:bg-red-500/20 text-red-500 transition-all flex-none ${activeSessionId === session.id ? 'opacity-100' : ''}`}
@@ -687,19 +720,16 @@ export default function Home() {
 
                   </div>
 
-                  {/* MODERN CHAT BUBBLE LAYOUT */}
                   <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 chat-scroll-container">
                     {activeTurns.map((turn, idx) => (
                       <div key={idx} className="flex flex-col space-y-4 mb-6 animate-in slide-in-from-bottom-2 fade-in duration-300">
                         
-                        {/* USER PROMPT BUBBLE (RIGHT) */}
                         <div className="flex justify-end w-full">
                           <div className={`max-w-[85%] px-5 py-3 rounded-3xl rounded-tr-sm text-[15px] leading-relaxed shadow-md ${isDark ? 'bg-gradient-to-r from-purple-600 to-cyan-600 text-white' : 'bg-gradient-to-r from-purple-500 to-cyan-500 text-white'}`}>
                             {turn.prompt}
                           </div>
                         </div>
 
-                        {/* AI RESPONSE BUBBLE (LEFT) */}
                         <div className="flex justify-start w-full">
                           <div className={`max-w-[95%] px-5 py-4 rounded-3xl rounded-tl-sm text-[15px] leading-relaxed shadow-sm whitespace-pre-wrap ${isDark ? 'bg-[#2a2b2c] text-[#e3e3e3] border border-white/5' : 'bg-white text-gray-800 border border-gray-200'}`}>
                             {turn.results[modelName] || "No response generated."}
