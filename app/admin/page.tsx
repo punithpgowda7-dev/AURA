@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { initializeApp, getApps } from "firebase/app";
 import { getFirestore, collection, onSnapshot, doc, updateDoc } from "firebase/firestore";
-import { Lock, LogOut, Ban, Users, Activity } from "lucide-react";
+import { Lock, LogOut, Ban, Users, Activity, CheckCircle } from "lucide-react";
 
 // Exact same secure config as your main page
 const firebaseConfig = {
@@ -17,14 +17,13 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const db = getFirestore(app);
 
-// Data structure for the Admin Table
 type UserData = {
   email: string;
   name: string;
   lastLogin: string;
   elapsedSeconds: number;
   isBanned?: boolean;
-  isLoggedOut?: boolean; // Added to track offline status
+  isLoggedOut?: boolean;
 };
 
 export default function AdminDashboard() {
@@ -33,10 +32,8 @@ export default function AdminDashboard() {
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // YOUR SECRET ADMIN PASSWORD
   const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD;
 
-  // 1. LIVE WIRE TO DATABASE (Real-time updates)
   useEffect(() => {
     if (!isAuthenticated) return;
     setLoading(true);
@@ -45,42 +42,33 @@ export default function AdminDashboard() {
       const fetchedUsers: UserData[] = [];
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        
-        // --- Hide users who are banned or forcefully logged out ---
-        if (data.forceLogout || data.isBanned) return;
-
         fetchedUsers.push({
           email: doc.id,
           name: data.name || "Unknown",
           lastLogin: data.lastLogin || "",
           elapsedSeconds: data.elapsedSeconds || 0,
           isBanned: data.isBanned || false,
-          isLoggedOut: data.isLoggedOut || false, // Capture offline status
+          isLoggedOut: data.isLoggedOut || false,
         });
       });
-      // Sort by newest login first
       fetchedUsers.sort((a, b) => new Date(b.lastLogin).getTime() - new Date(a.lastLogin).getTime());
       setUsers(fetchedUsers);
       setLoading(false);
     });
 
-    return () => unsubscribe(); // Cleanup listener on unmount
+    return () => unsubscribe();
   }, [isAuthenticated]);
 
-  // 2. LIVE STOPWATCH (Visual 1-second tick)
   useEffect(() => {
     if (!isAuthenticated) return;
-    
     const ticker = setInterval(() => {
       setUsers((prevUsers) => 
         prevUsers.map((user) => ({
           ...user,
-          // Only visually tick up the time if they are NOT banned AND NOT logged out
           elapsedSeconds: (user.isBanned || user.isLoggedOut) ? user.elapsedSeconds : user.elapsedSeconds + 1
         }))
       );
     }, 1000);
-
     return () => clearInterval(ticker);
   }, [isAuthenticated]);
 
@@ -94,24 +82,35 @@ export default function AdminDashboard() {
     }
   };
 
+  // AUTOMATED EMAIL + FORCE LOGOUT
   const forceLogoutUser = async (email: string) => {
-    if (confirm(`Are you sure you want to log out ${email}? They will be able to log back in.`)) {
+    if (confirm(`Are you sure you want to log out ${email}? An automated email will be sent to them.`)) {
       await updateDoc(doc(db, "users", email), { forceLogout: true });
-      // Removed the alert here so it feels more seamless
+      fetch('/api/admin-action', { method: 'POST', body: JSON.stringify({ email, action: 'logout' }) });
     }
   };
 
-  const banUser = async (email: string) => {
-    if (confirm(`⚠️ WARNING: Are you sure you want to PERMANENTLY BAN ${email}? This will delete all their chats and they will never be able to log in again.`)) {
-      await updateDoc(doc(db, "users", email), { 
-        isBanned: true, 
-        chats: [], // Instantly wipes their history
-        forceLogout: true 
-      });
+  // AUTOMATED EMAIL + REVERSIBLE BAN WITH DATA WIPE
+  const toggleBanUser = async (user: UserData) => {
+    if (user.isBanned) {
+      // UNBAN
+      if (confirm(`Restore access for ${user.email}? Their previous data will remain wiped.`)) {
+        await updateDoc(doc(db, "users", user.email), { isBanned: false, forceLogout: false });
+      }
+    } else {
+      // BAN
+      if (confirm(`⚠️ WARNING: Permanently BAN ${user.email}? This wipes their chats and sends them a notification email.`)) {
+        await updateDoc(doc(db, "users", user.email), { 
+          isBanned: true, 
+          chats: [], // Wipes their history forever
+          globalContext: "", // Wipes global memory
+          forceLogout: true 
+        });
+        fetch('/api/admin-action', { method: 'POST', body: JSON.stringify({ email: user.email, action: 'ban' }) });
+      }
     }
   };
 
-  // Utility to format seconds into HH:MM:SS
   const formatElapsedTime = (totalSeconds: number) => {
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -119,7 +118,6 @@ export default function AdminDashboard() {
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  // Utility to format ISO date into DD:MM:YYYY, HH:MM
   const formatDateTime = (isoString: string) => {
     if (!isoString) return "Never";
     const date = new Date(isoString);
@@ -131,7 +129,6 @@ export default function AdminDashboard() {
     return `${day}:${month}:${year}, ${hours}:${minutes}`;
   };
 
-  // --- LOGIN SCREEN (Only you see this) ---
   if (!isAuthenticated) {
     return (
       <div className="h-screen flex items-center justify-center bg-gray-100 font-sans">
@@ -153,7 +150,6 @@ export default function AdminDashboard() {
     );
   }
 
-  // --- MAIN ADMIN DASHBOARD ---
   return (
     <div className="min-h-screen bg-[#f4f7fb] text-gray-800 font-sans p-8">
       <div className="max-w-7xl mx-auto">
@@ -173,13 +169,12 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* BLUE AND WHITE TABLE EXACTLY AS REQUESTED */}
         <div className="bg-white rounded-xl shadow-xl overflow-hidden border border-gray-200">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-[#4472c4] text-white">
                 <th className="p-4 font-semibold text-sm border-r border-white/20 w-16 text-center">SL No</th>
-                <th className="p-4 font-semibold text-sm border-r border-white/20 w-48">NAME</th>
+                <th className="p-4 font-semibold text-sm border-r border-white/20">NAME</th>
                 <th className="p-4 font-semibold text-sm border-r border-white/20 min-w-[250px]">E-MAIL</th>
                 <th className="p-4 font-semibold text-sm border-r border-white/20 w-32">Elapsed Time</th>
                 <th className="p-4 font-semibold text-sm border-r border-white/20 w-40">LOGGED ON</th>
@@ -190,48 +185,39 @@ export default function AdminDashboard() {
             </thead>
             <tbody>
               {loading && users.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="p-8 text-center text-gray-500">Connecting to live database...</td>
-                </tr>
+                <tr><td colSpan={8} className="p-8 text-center text-gray-500">Connecting to live database...</td></tr>
               ) : users.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="p-8 text-center text-gray-500">No users currently logged in.</td>
-                </tr>
+                <tr><td colSpan={8} className="p-8 text-center text-gray-500">No users found.</td></tr>
               ) : (
                 users.map((user, index) => {
-                  // Alternating row colors (white and light blue/gray)
                   const rowBg = index % 2 === 0 ? 'bg-white' : 'bg-[#e9eef5]';
-                  
                   return (
                     <tr key={user.email} className={`${rowBg} hover:bg-[#d6e0f0] transition-colors`}>
                       <td className="p-4 text-sm font-medium border-r border-gray-300 text-center">{index + 1}.</td>
                       <td className="p-4 text-sm font-bold border-r border-gray-300">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span>{user.name}</span>
-                          {user.isBanned && (
-                            <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded uppercase font-bold tracking-wider">Banned</span>
-                          )}
                         </div>
                       </td>
-                      <td className="p-4 text-sm border-r border-gray-300 text-gray-700 break-all">
-                        {user.email}
-                      </td>
-                      <td className={`p-4 text-sm font-mono border-r border-gray-300 font-semibold ${user.isLoggedOut ? 'text-gray-500' : 'text-blue-700'}`}>
+                      <td className="p-4 text-sm border-r border-gray-300 text-gray-700 break-all">{user.email}</td>
+                      <td className={`p-4 text-sm font-mono border-r border-gray-300 font-semibold ${user.isLoggedOut || user.isBanned ? 'text-gray-500' : 'text-blue-700'}`}>
                         {formatElapsedTime(user.elapsedSeconds)}
                       </td>
                       <td className="p-4 text-sm border-r border-gray-300 text-gray-700">
                         {formatDateTime(user.lastLogin)}
                       </td>
                       <td className="p-4 text-sm border-r border-gray-300 font-medium">
-                        {user.isBanned || user.isLoggedOut ? (
+                        {user.isBanned ? (
                           <div className="flex items-center gap-2 text-red-600 font-bold">
-                            <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
-                            Inactive
+                            <span className="w-2.5 h-2.5 rounded-full bg-red-600"></span>Banned
+                          </div>
+                        ) : user.isLoggedOut ? (
+                          <div className="flex items-center gap-2 text-gray-500 font-bold">
+                            <span className="w-2.5 h-2.5 rounded-full bg-gray-400"></span>Offline
                           </div>
                         ) : (
                           <div className="flex items-center gap-2 text-green-600 font-bold">
-                            <span className="w-2.5 h-2.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse"></span>
-                            Active
+                            <span className="w-2.5 h-2.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse"></span>Active
                           </div>
                         )}
                       </td>
@@ -245,13 +231,21 @@ export default function AdminDashboard() {
                         </button>
                       </td>
                       <td className="p-4 text-center">
-                        <button 
-                          onClick={() => banUser(user.email)}
-                          disabled={user.isBanned}
-                          className="flex items-center justify-center gap-1 w-full bg-red-100 hover:bg-red-200 text-red-700 font-bold py-2 rounded border border-red-300 disabled:opacity-50 transition-colors text-xs"
-                        >
-                          <Ban size={14} /> {user.isBanned ? "BANNED" : "BAN"}
-                        </button>
+                        {user.isBanned ? (
+                          <button 
+                            onClick={() => toggleBanUser(user)}
+                            className="flex items-center justify-center gap-1 w-full bg-green-100 hover:bg-green-200 text-green-700 font-bold py-2 rounded border border-green-300 transition-colors text-xs"
+                          >
+                            <CheckCircle size={14} /> UNBAN
+                          </button>
+                        ) : (
+                          <button 
+                            onClick={() => toggleBanUser(user)}
+                            className="flex items-center justify-center gap-1 w-full bg-red-100 hover:bg-red-200 text-red-700 font-bold py-2 rounded border border-red-300 transition-colors text-xs"
+                          >
+                            <Ban size={14} /> BAN
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

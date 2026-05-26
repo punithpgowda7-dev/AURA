@@ -2,11 +2,9 @@
 import { useState, useRef, useEffect } from "react";
 import { Menu, Sun, Moon, Plus, ArrowUp, Check, Sparkles, X, MessageSquare, Square, SquarePen, User, Mail, Key, Lock, Rocket, BarChart3, LogOut, Trash2 } from "lucide-react";
 
-// --- FIREBASE CLOUD DATABASE SETUP ---
 import { initializeApp, getApps } from "firebase/app";
 import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc } from "firebase/firestore";
 
-// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY as string,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN as string,
@@ -22,12 +20,8 @@ const db = getFirestore(app);
 const AVAILABLE_MODELS = ["Perplexity", "Gemini", "Grok", "ChatGPT", "Claude", "DeepSeek"];
 
 const MODEL_VERSIONS: Record<string, string> = {
-  "Perplexity": "sonar-pro",
-  "Gemini": "gemini-2.5-flash",
-  "Grok": "grok-2-beta",
-  "ChatGPT": "gpt-4o",
-  "Claude": "claude-3.5-sonnet",
-  "DeepSeek": "deepseek-chat"
+  "Perplexity": "sonar-pro", "Gemini": "gemini-2.5-flash", "Grok": "grok-2-beta",
+  "ChatGPT": "gpt-4o", "Claude": "claude-3.5-sonnet", "DeepSeek": "deepseek-chat"
 };
 
 const BENCHMARK_DATA: Record<string, number[]> = {
@@ -39,34 +33,19 @@ const BENCHMARK_DATA: Record<string, number[]> = {
   "Grok": [73.0, 34.0, 84.5, 50.0, 68.0, 72.0, 70.0, 65.0, 78.0, 83.0],
 };
 
-const CRITERIA = [
-  "1. Undergraduate level knowledge", "2. Graduate level reasoning", "3. Grade school math",
-  "4. Maths problem solving", "5. Multilingual math", "6. Code generation",
-  "7. Reasoning over text", "8. Mixed evaluation", "9. Knowledge Q&A", "10. Common Knowledge"
-];
+const CRITERIA = ["1. Undergraduate level knowledge", "2. Graduate level reasoning", "3. Grade school math", "4. Maths problem solving", "5. Multilingual math", "6. Code generation", "7. Reasoning over text", "8. Mixed evaluation", "9. Knowledge Q&A", "10. Common Knowledge"];
 
-type Turn = {
-  prompt: string;
-  results: Record<string, string>;
-  bestModel: string | null;
-};
+type Turn = { prompt: string; results: Record<string, string>; bestModel: string | null; };
 
 type ChatSession = {
-  id: string;
-  title: string; 
-  models: string[];
-  turns: Turn[]; 
-  contextString: string; 
-  prompt?: string;
-  results?: Record<string, string>;
-  bestModel?: string | null;
+  id: string; title: string; models: string[]; turns: Turn[]; contextString: string;
+  prompt?: string; results?: Record<string, string>; bestModel?: string | null;
 };
 
 export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
   const [isDark, setIsDark] = useState(true);
 
-  // --- AUTHENTICATION STATE ---
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authStep, setAuthStep] = useState(1); 
   const [userName, setUserName] = useState("");
@@ -76,7 +55,6 @@ export default function Home() {
   const [toastMessage, setToastMessage] = useState("");
   const [isLaunching, setIsLaunching] = useState(false);
 
-  // --- DASHBOARD STATE ---
   const [showHistory, setShowHistory] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [showReport, setShowReport] = useState(false); 
@@ -90,12 +68,13 @@ export default function Home() {
   const [chatHistory, setChatHistory] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   
+  // NEW: GLOBAL CONTEXT MEMORY
+  const [globalMemory, setGlobalMemory] = useState<string>("");
+  
   const abortControllerRef = useRef<AbortController | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
+  useEffect(() => { setIsMounted(true); }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -105,11 +84,9 @@ export default function Home() {
     return () => clearTimeout(timer);
   }, [activeTurns]);
 
-  // --- ADMIN LISTENER & TIME TRACKER ---
   useEffect(() => {
     if (!isAuthenticated || !userEmail || !firebaseConfig.apiKey) return;
 
-    // 1. Listen for Admin Force Logout or Ban
     const unsub = onSnapshot(doc(db, "users", userEmail), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -123,7 +100,6 @@ export default function Home() {
       }
     });
 
-    // 2. Track Elapsed Time (Updates database every 30 seconds)
     const timeTracker = setInterval(async () => {
       try {
         const userRef = doc(db, "users", userEmail);
@@ -132,23 +108,11 @@ export default function Home() {
           const currentSeconds = snap.data().elapsedSeconds || 0;
           await updateDoc(userRef, { elapsedSeconds: currentSeconds + 30 });
         }
-      } catch (e) { console.error("Time track error", e); }
+      } catch (e) {}
     }, 30000);
 
-    return () => {
-      unsub();
-      clearInterval(timeTracker);
-    };
+    return () => { unsub(); clearInterval(timeTracker); };
   }, [isAuthenticated, userEmail]);
-
-  // --- CLOUD DATABASE FUNCTIONS ---
-  const saveToCloud = async (email: string, history: ChatSession[]) => {
-    if (!email || !firebaseConfig.apiKey) return; 
-    try {
-      // Use merge: true so we don't accidentally delete the admin tracking stats
-      await setDoc(doc(db, "users", email), { chats: history }, { merge: true });
-    } catch (e) { console.error("Cloud save failed", e); }
-  };
 
   const loadFromCloud = async (email: string) => {
     if (!email || !firebaseConfig.apiKey) return;
@@ -156,6 +120,8 @@ export default function Home() {
       const docSnap = await getDoc(doc(db, "users", email));
       if (docSnap.exists()) {
         setChatHistory(docSnap.data().chats || []);
+        // Load Global Memory
+        setGlobalMemory(docSnap.data().globalContext || "");
       }
     } catch (e) { console.error("Cloud load failed", e); }
   };
@@ -170,7 +136,6 @@ export default function Home() {
       setAuthStep(3);
       loadFromCloud(savedEmail); 
       
-      // Update status to online when auto-logging in via local storage
       if (firebaseConfig.apiKey) {
         updateDoc(doc(db, "users", savedEmail), { isLoggedOut: false, forceLogout: false }).catch(() => {});
       }
@@ -183,13 +148,10 @@ export default function Home() {
         setShowModelMenu(false);
       }
     };
-    if (showModelMenu) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
+    if (showModelMenu) document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showModelMenu]);
 
-  // --- AUTHENTICATION LOGIC ---
   const handleAuthenticate = async () => {
     if (!userName.trim() || !userEmail.includes("@")) {
       setToastMessage("Please enter a valid name and Gmail ID.");
@@ -197,12 +159,11 @@ export default function Home() {
       return;
     }
 
-    // CHECK IF BANNED BEFORE SENDING OTP
     try {
       const userRef = doc(db, "users", userEmail);
       const userSnap = await getDoc(userRef);
       if (userSnap.exists() && userSnap.data().isBanned) {
-        setToastMessage("Access Denied: This account is permanently banned.");
+        setToastMessage("Access Denied: This account is currently banned by Admin.");
         setTimeout(() => setToastMessage(""), 5000);
         return;
       }
@@ -237,7 +198,6 @@ export default function Home() {
       localStorage.setItem("aura_user_email", userEmail);
       localStorage.setItem("aura_user_name", userName);
       
-      // Update Admin Tracking Stats on fresh login
       try {
         const userRef = doc(db, "users", userEmail);
         const userSnap = await getDoc(userRef);
@@ -249,8 +209,8 @@ export default function Home() {
           email: userEmail,
           lastLogin: new Date().toISOString(),
           elapsedSeconds: existingElapsed,
-          forceLogout: false, // Reset force logout
-          isLoggedOut: false  // TELLS ADMIN DASHBOARD THEY ARE ONLINE!
+          forceLogout: false,
+          isLoggedOut: false
         }, { merge: true });
       } catch (e) {}
 
@@ -263,20 +223,16 @@ export default function Home() {
   };
 
   const handleLogout = async () => {
-    // 1. Tell Firebase the user is offline BEFORE clearing local data!
     if (userEmail && firebaseConfig.apiKey) {
-      try {
-        await updateDoc(doc(db, "users", userEmail), { isLoggedOut: true });
-      } catch (e) { console.error("Failed to update logout status", e); }
+      try { await updateDoc(doc(db, "users", userEmail), { isLoggedOut: true }); } catch (e) {}
     }
-
-    // 2. Clear local data
     localStorage.removeItem("aura_user_email");
     localStorage.removeItem("aura_user_name");
     setIsAuthenticated(false);
     setAuthStep(1);
     setChatHistory([]);
     setActiveSessionId(null);
+    setGlobalMemory("");
     setOtpInput("");
     setShowProfileModal(false);
   };
@@ -299,10 +255,7 @@ export default function Home() {
       let score = text.length; 
       score += (text.match(/`{3}/g) || []).length * 500; 
       score += (text.match(/^\s*[-*]\s/gm) || []).length * 50; 
-      if (score > maxScore) {
-        maxScore = score;
-        winner = m;
-      }
+      if (score > maxScore) { maxScore = score; winner = m; }
     });
     return winner;
   };
@@ -320,14 +273,15 @@ export default function Home() {
     
     setActiveTurns(prev => [...prev, { prompt: currentPrompt, results: loadingResults, bestModel: null }]);
 
+    // COMPILE CONTEXT: Global Memory + Current Session History
     let existingContext = "";
     if (activeSessionId) {
       const session = chatHistory.find(s => s.id === activeSessionId);
       if (session) existingContext = session.contextString;
     }
-    const memoryPrompt = existingContext 
-      ? `Previous Conversation Context:\n${existingContext}\n\nCurrent Request:\n${currentPrompt}` 
-      : currentPrompt;
+    
+    // Injecting Global Memory silently into the API call
+    const memoryPrompt = `[GLOBAL USER CONTEXT/MEMORY]:\n${globalMemory}\n\n[CURRENT CHAT HISTORY]:\n${existingContext}\n\nCurrent Request:\n${currentPrompt}`;
 
     abortControllerRef.current = new AbortController();
     let finalSessionResults: Record<string, string> = {};
@@ -367,6 +321,10 @@ export default function Home() {
       const aiResponseToRemember = finalSessionResults[calculatedWinner || selectedModels[0]] || "";
       const newContextAppend = `User: ${currentPrompt}\nAI: ${aiResponseToRemember}\n\n`;
       
+      // Update Global Memory string (Capped at 4000 characters to prevent API crash)
+      const newGlobalMemory = (globalMemory + newContextAppend).slice(-4000);
+      setGlobalMemory(newGlobalMemory);
+
       let updatedHistory;
       if (activeSessionId) {
         const existingSession = chatHistory.find(s => s.id === activeSessionId)!;
@@ -393,7 +351,16 @@ export default function Home() {
       }
       
       setChatHistory(updatedHistory);
-      saveToCloud(userEmail, updatedHistory); 
+      
+      // Save everything to cloud including the new Global Memory
+      if (userEmail && firebaseConfig.apiKey) {
+        try {
+          await setDoc(doc(db, "users", userEmail), { 
+            chats: updatedHistory,
+            globalContext: newGlobalMemory 
+          }, { merge: true });
+        } catch (e) { console.error(e); }
+      }
     }
   };
 
@@ -429,11 +396,15 @@ export default function Home() {
     if (window.innerWidth < 768) setShowHistory(false);
   };
 
-  const deleteChat = (e: React.MouseEvent, idToDelete: string) => {
+  const deleteChat = async (e: React.MouseEvent, idToDelete: string) => {
     e.stopPropagation(); 
     const updatedHistory = chatHistory.filter((session) => session.id !== idToDelete);
     setChatHistory(updatedHistory);
-    saveToCloud(userEmail, updatedHistory); 
+    
+    if (userEmail && firebaseConfig.apiKey) {
+      try { await setDoc(doc(db, "users", userEmail), { chats: updatedHistory }, { merge: true }); } catch (e) {}
+    }
+    
     if (activeSessionId === idToDelete) handleNewChat();
   };
 
