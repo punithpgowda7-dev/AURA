@@ -1,6 +1,9 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Menu, Sun, Moon, Plus, ArrowUp, Check, Sparkles, X, MessageSquare, Square, SquarePen, User, Mail, Key, Lock, Rocket, BarChart3, LogOut, Trash2 } from "lucide-react";
+import { AuraBackground } from "./components/AuraBackground";
+import { CometCursor } from "./components/CometCursor";
 
 import { initializeApp, getApps } from "firebase/app";
 import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc } from "firebase/firestore";
@@ -45,6 +48,7 @@ type ChatSession = {
 export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
   const [isDark, setIsDark] = useState(true);
+  const [cursorEnabled, setCursorEnabled] = useState(false);
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authStep, setAuthStep] = useState(1); 
@@ -75,6 +79,14 @@ export default function Home() {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setIsMounted(true); }, []);
+
+  useEffect(() => {
+    if (!isMounted) return;
+    const touchOnly =
+      typeof window !== "undefined" &&
+      window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+    setCursorEnabled(!touchOnly);
+  }, [isMounted]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -432,350 +444,699 @@ export default function Home() {
     }
   };
 
-  const bgClass = isDark ? "bg-[#131314] text-[#e3e3e3]" : "bg-white text-gray-800";
-  const elementBgClass = isDark ? "bg-[#1e1f20]" : "bg-[#f0f4f9]";
-  const borderClass = isDark ? "border-white/10" : "border-gray-200";
+  const bgClass = isDark ? "aura-bg-dark text-[#f0f0f5]" : "aura-bg-light text-slate-800";
+  const elementBgClass = isDark ? "glass-dark" : "glass-light";
+  const cardBgClass = isDark ? "glass-card-dark" : "glass-card-light";
+  const borderClass = isDark ? "border-white/10" : "border-violet-200/80";
+  const ghostBtnClass = isDark ? "btn-ghost-dark" : "btn-ghost-light";
+  const inputClass = isDark ? "input-dark text-white placeholder:text-white/40" : "input-light text-slate-900 placeholder:text-slate-400";
+  const hoverRowClass = isDark ? "hover:bg-white/5" : "hover:bg-violet-50";
+  const activeRowClass = isDark ? "bg-white/10 text-white" : "bg-violet-100/80 text-violet-950";
+  const logoClass = isDark ? "gradient-text-subtle" : "gradient-text-light";
+
+  const renderResponse = (text: string) => {
+    if (text === "Generating...") {
+      return (
+        <span className="flex items-center gap-3">
+          <span className={`typing-dots ${isDark ? "text-cyan-400" : "text-purple-600"}`}><span /><span /><span /></span>
+          <span className={`font-medium ${isDark ? "text-cyan-400/80" : "text-purple-600"}`}>Generating</span>
+          <span className={`inline-block w-12 h-0.5 rounded-full overflow-hidden ${isDark ? "bg-cyan-400/20" : "bg-purple-200"}`}>
+            <span className={`block h-full w-1/2 rounded-full ${isDark ? "bg-cyan-400" : "bg-purple-500"}`} style={{ animation: "shimmer-sweep 1s ease-in-out infinite" }} />
+          </span>
+        </span>
+      );
+    }
+    return text;
+  };
+
+  const easeOut = [0.22, 1, 0.36, 1] as const;
+  const transitionFast = { duration: 0.25, ease: easeOut };
+  const transitionSmooth = { duration: 0.45, ease: easeOut };
 
   if (!isMounted) return null;
 
-  if (!isAuthenticated) {
-    return (
-      <div className={`h-screen flex items-center justify-center transition-colors duration-300 font-sans overflow-hidden ${bgClass}`}>
-        {toastMessage && (
-          <div className="absolute top-10 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-purple-600 text-white shadow-2xl z-50 animate-in slide-in-from-top-5 font-medium tracking-wide border border-white/20 text-center whitespace-nowrap">
-            {toastMessage}
-          </div>
-        )}
-        <div className={`w-full max-w-md p-8 md:p-10 rounded-3xl border ${borderClass} ${elementBgClass} shadow-2xl flex flex-col relative overflow-hidden transition-all duration-500`}>
-          {isLaunching && (
-            <div className="absolute inset-0 bg-[#0a0a0a] z-40 flex flex-col items-center justify-center animate-out fade-out duration-1000 delay-1000">
-              <Rocket size={64} className="text-purple-500 animate-bounce mb-4 drop-shadow-[0_0_20px_rgba(168,85,247,0.6)]" />
-              <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500 animate-pulse tracking-widest uppercase">
-                Authenticating
-              </h2>
-            </div>
-          )}
-          <div className="flex justify-center mb-6">
-            <Sparkles size={48} className="text-[#a8c7fa] drop-shadow-[0_0_15px_rgba(168,199,250,0.4)]" />
-          </div>
-          <h1 className="text-3xl font-bold text-center mb-2 tracking-tight">Access AURA</h1>
-          <p className="text-center opacity-60 mb-8 text-sm uppercase tracking-widest font-semibold">Secure Login</p>
+  const appShell = (content: ReactNode) => (
+    <>
+      <CometCursor isDark={isDark} enabled={cursorEnabled} />
+      {content}
+    </>
+  );
 
-          <div className="flex flex-col gap-5">
-            <div className="relative">
-              <User size={18} className="absolute left-4 top-1/2 transform -translate-y-1/2 opacity-50" />
+  if (!isAuthenticated) {
+    return appShell(
+      <div className={`h-[100dvh] min-h-0 flex flex-col overflow-hidden relative ${bgClass}`}>
+        <AuraBackground isDark={isDark} />
+
+        <AnimatePresence>
+          {toastMessage && (
+            <motion.div
+              initial={{ opacity: 0, y: -20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 400, damping: 25 }}
+              className="absolute top-4 left-1/2 -translate-x-1/2 px-6 py-3 rounded-2xl toast text-white z-50 font-medium tracking-wide text-center whitespace-nowrap max-w-[90vw]"
+            >
+              {toastMessage}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div className="relative z-10 flex-1 min-h-0 w-full overflow-y-auto flex flex-col items-center justify-center py-4 px-4">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ ...transitionSmooth, delay: 0.05 }}
+          className={`w-full max-w-md p-6 md:p-8 rounded-3xl holo-border ${cardBgClass} shadow-2xl flex flex-col relative overflow-hidden shrink-0`}
+        >
+          <AnimatePresence>
+            {isLaunching && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.6 }}
+                className="absolute inset-0 bg-[#0a0a0f]/95 z-40 flex flex-col items-center justify-center backdrop-blur-sm"
+              >
+                <motion.div
+                  animate={{ y: [0, -12, 0] }}
+                  transition={{ repeat: Infinity, duration: 1.2, ease: "easeInOut" }}
+                >
+                  <Rocket size={64} className="text-purple-400 mb-4 drop-shadow-[0_0_24px_rgba(168,85,247,0.7)]" />
+                </motion.div>
+                <motion.h2
+                  animate={{ opacity: [0.6, 1, 0.6] }}
+                  transition={{ repeat: Infinity, duration: 1.5 }}
+                  className="text-2xl font-bold gradient-text tracking-widest uppercase"
+                >
+                  Authenticating
+                </motion.h2>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <Sparkles size={36} className="text-[#a8c7fa] animate-logo-pulse shrink-0" />
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight gradient-text-animated">Access AURA</h1>
+          </div>
+          <p className="text-center opacity-50 mb-6 text-xs uppercase tracking-[0.2em] font-semibold">Secure Login</p>
+
+          <div className="flex flex-col gap-4">
+            <motion.div initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.15 }} className="relative">
+              <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 opacity-40" />
               <input
                 type="text"
                 placeholder="Enter Your Name"
                 value={userName}
                 onChange={(e) => setUserName(e.target.value)}
                 disabled={authStep > 1}
-                className={`w-full py-4 pl-12 pr-4 rounded-xl border focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors ${isDark ? 'bg-[#131314] border-white/10 text-white' : 'bg-white border-gray-300 text-black'} ${authStep > 1 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                className={`w-full py-4 pl-12 pr-4 rounded-2xl ${inputClass} ${authStep > 1 ? "opacity-50 cursor-not-allowed" : ""}`}
               />
-            </div>
-            <div className="relative">
-              <Mail size={18} className="absolute left-4 top-1/2 transform -translate-y-1/2 opacity-50" />
+            </motion.div>
+            <motion.div initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }} className="relative">
+              <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 opacity-40" />
               <input
                 type="email"
                 placeholder="Enter Your Gmail ID"
                 value={userEmail}
                 onChange={(e) => setUserEmail(e.target.value)}
                 disabled={authStep > 1}
-                className={`w-full py-4 pl-12 pr-4 rounded-xl border focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors ${isDark ? 'bg-[#131314] border-white/10 text-white' : 'bg-white border-gray-300 text-black'} ${authStep > 1 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                className={`w-full py-4 pl-12 pr-4 rounded-2xl ${inputClass} ${authStep > 1 ? "opacity-50 cursor-not-allowed" : ""}`}
               />
-            </div>
-            {authStep >= 2 && (
-              <div className="relative animate-in slide-in-from-bottom-4 fade-in">
-                <Key size={18} className="absolute left-4 top-1/2 transform -translate-y-1/2 opacity-50" />
-                <input
-                  type="text"
-                  placeholder="Enter Verification Code"
-                  value={otpInput}
-                  onChange={(e) => setOtpInput(e.target.value)}
-                  maxLength={6}
-                  disabled={authStep === 3}
-                  className={`w-full py-4 pl-12 pr-4 rounded-xl border focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors tracking-widest font-mono text-lg ${isDark ? 'bg-[#131314] border-white/10 text-white' : 'bg-white border-gray-300 text-black'}`}
-                />
-              </div>
-            )}
-            <button
+            </motion.div>
+            <AnimatePresence>
+              {authStep >= 2 && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0, y: -8 }}
+                  animate={{ opacity: 1, height: "auto", y: 0 }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 28 }}
+                  className="relative overflow-hidden"
+                >
+                  <Key size={18} className="absolute left-4 top-1/2 -translate-y-1/2 opacity-40" />
+                  <input
+                    type="text"
+                    placeholder="Enter Verification Code"
+                    value={otpInput}
+                    onChange={(e) => setOtpInput(e.target.value)}
+                    maxLength={6}
+                    disabled={authStep === 3}
+                    className={`w-full py-4 pl-12 pr-4 rounded-2xl ${inputClass} tracking-[0.3em] font-mono text-lg`}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <motion.button
+              whileHover={{ scale: authStep === 3 ? 1 : 1.02 }}
+              whileTap={{ scale: authStep === 3 ? 1 : 0.98 }}
               onClick={authStep === 1 ? handleAuthenticate : handleLogin}
               disabled={authStep === 3}
-              className="w-full mt-2 py-4 rounded-xl font-bold tracking-widest uppercase text-white bg-gradient-to-r from-cyan-500 to-purple-600 shadow-[0_0_15px_rgba(168,85,247,0.3)] hover:shadow-[0_0_25px_rgba(168,85,247,0.5)] hover:scale-[1.02] transition-all flex justify-center items-center gap-2"
+              className="w-full mt-2 py-4 rounded-2xl font-bold tracking-widest uppercase text-white btn-primary flex justify-center items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {authStep === 1 ? (<>Authenticate <Lock size={18} /></>) : (<>Log In <Rocket size={18} /></>)}
-            </button>
+            </motion.button>
           </div>
+        </motion.div>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className={`h-screen flex flex-col transition-colors duration-300 font-sans overflow-hidden ${bgClass}`}>
-      
-      {showProfileModal && (
-        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in p-4">
-          <div className={`w-full max-w-sm rounded-3xl shadow-2xl border ${borderClass} ${elementBgClass} overflow-hidden flex flex-col`}>
-            <div className="flex justify-between items-center p-6 border-b border-white/10 flex-none">
-              <h2 className="text-xl font-bold tracking-tight">Your Profile</h2>
-              <button onClick={() => setShowProfileModal(false)} className="p-2 rounded-full hover:bg-white/10 transition-colors">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-8 flex flex-col items-center gap-4">
-              <div className={`w-20 h-20 rounded-full flex items-center justify-center text-3xl font-bold text-white shadow-lg ${isDark ? 'bg-purple-900' : 'bg-purple-600'}`}>
-                {userName ? userName.charAt(0).toUpperCase() : 'U'}
+  return appShell(
+    <div className={`h-[100dvh] min-h-0 flex flex-col transition-colors duration-500 font-sans overflow-hidden relative ${bgClass}`}>
+      <AuraBackground isDark={isDark} />
+      {/* Profile Modal */}
+      <AnimatePresence>
+        {showProfileModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="absolute inset-0 z-[100] flex items-center justify-center modal-overlay p-4"
+            onClick={() => setShowProfileModal(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-sm rounded-3xl shadow-2xl ${cardBgClass} overflow-hidden flex flex-col`}
+            >
+              <div className={`flex justify-between items-center p-6 border-b ${borderClass} flex-none`}>
+                <h2 className="text-xl font-bold tracking-tight">Your Profile</h2>
+                <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => setShowProfileModal(false)} className={`p-2 rounded-full ${ghostBtnClass}`}>
+                  <X size={20} />
+                </motion.button>
               </div>
-              <div className="text-center">
-                <h3 className="text-2xl font-bold tracking-tight">{userName}</h3>
-                <p className="text-sm opacity-60 mt-1">{userEmail}</p>
+              <div className="p-8 flex flex-col items-center gap-4">
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 20, delay: 0.1 }}
+                  className={`w-20 h-20 rounded-full flex items-center justify-center text-3xl font-bold text-white shadow-lg bg-gradient-to-br from-purple-600 to-cyan-500`}
+                >
+                  {userName ? userName.charAt(0).toUpperCase() : "U"}
+                </motion.div>
+                <div className="text-center">
+                  <h3 className="text-2xl font-bold tracking-tight">{userName}</h3>
+                  <p className="text-sm opacity-50 mt-1">{userEmail}</p>
+                </div>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleLogout}
+                  className="mt-6 w-full py-3 rounded-2xl font-bold text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500 hover:text-white transition-all duration-300 flex justify-center items-center gap-2"
+                >
+                  <LogOut size={18} /> Log Out
+                </motion.button>
               </div>
-              <button 
-                onClick={handleLogout} 
-                className="mt-6 w-full py-3 rounded-xl font-bold text-red-500 bg-red-500/10 border border-red-500/20 hover:bg-red-500 hover:text-white transition-all flex justify-center items-center gap-2"
-              >
-                <LogOut size={18} /> Log Out
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {showReport && (
-        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in p-4">
-          <div className={`w-full max-w-4xl rounded-2xl shadow-2xl border ${borderClass} ${isDark ? 'bg-[#1e1f20]' : 'bg-white'} overflow-hidden flex flex-col max-h-[90vh]`}>
-            <div className="flex justify-between items-center p-6 border-b border-white/10 flex-none">
-              <div className="flex items-center gap-3">
-                <BarChart3 className="text-purple-500" size={24} />
-                <h2 className="text-2xl font-bold tracking-tight">Report Analysis</h2>
+      {/* Report Modal */}
+      <AnimatePresence>
+        {showReport && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="absolute inset-0 z-[100] flex items-center justify-center modal-overlay p-4"
+            onClick={() => setShowReport(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 24 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 12 }}
+              transition={{ type: "spring", stiffness: 350, damping: 30 }}
+              onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-4xl rounded-3xl shadow-2xl ${cardBgClass} overflow-hidden flex flex-col max-h-[90vh]`}
+            >
+              <div className={`flex justify-between items-center p-6 border-b ${borderClass} flex-none`}>
+                <div className="flex items-center gap-3">
+                  <BarChart3 className="text-purple-400" size={24} />
+                  <h2 className="text-2xl font-bold tracking-tight">Report Analysis</h2>
+                </div>
+                <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => setShowReport(false)} className={`p-2 rounded-full ${ghostBtnClass}`}>
+                  <X size={24} />
+                </motion.button>
               </div>
-              <button onClick={() => setShowReport(false)} className="p-2 rounded-full hover:bg-white/10 transition-colors">
-                <X size={24} />
-              </button>
-            </div>
-            <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
-              {selectedModels.length === 0 ? (
-                <p className="text-center opacity-60 py-10">Select models to view their benchmark analysis.</p>
-              ) : (
-                <div className="overflow-x-auto rounded-xl border border-white/10">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className={`${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
-                        <th className="p-4 font-semibold text-sm border-b border-white/10">Evaluation Criteria</th>
-                        {selectedModels.map(model => (
-                          <th key={model} className="p-4 font-bold text-sm border-b border-white/10 border-l">
-                            {model} <span className="block text-xs font-normal opacity-60">{MODEL_VERSIONS[model]}</span>
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {CRITERIA.map((criterion, index) => (
-                        <tr key={index} className={`transition-colors ${isDark ? 'hover:bg-white/5' : 'hover:bg-black/5'}`}>
-                          <td className="p-4 text-sm font-medium opacity-80 border-b border-white/10">{criterion}</td>
-                          {selectedModels.map(model => (
-                            <td key={model} className="p-4 text-sm font-mono border-b border-white/10 border-l">
-                              <span className={`px-2 py-1 rounded-md ${BENCHMARK_DATA[model][index] > 85 ? 'text-green-400 bg-green-400/10' : 'text-yellow-400 bg-yellow-400/10'}`}>
-                                {BENCHMARK_DATA[model][index].toFixed(1)}%
-                              </span>
-                            </td>
+              <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
+                {selectedModels.length === 0 ? (
+                  <p className="text-center opacity-50 py-10">Select models to view their benchmark analysis.</p>
+                ) : (
+                  <div className={`overflow-x-auto rounded-2xl border ${borderClass}`}>
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className={isDark ? "bg-white/5" : "bg-black/5"}>
+                          <th className={`p-4 font-semibold text-sm border-b ${borderClass}`}>Evaluation Criteria</th>
+                          {selectedModels.map((model) => (
+                            <th key={model} className={`p-4 font-bold text-sm border-b border-l ${borderClass}`}>
+                              {model} <span className="block text-xs font-normal opacity-50">{MODEL_VERSIONS[model]}</span>
+                            </th>
                           ))}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+                      </thead>
+                      <tbody>
+                        {CRITERIA.map((criterion, index) => (
+                          <motion.tr
+                            key={index}
+                            initial={{ opacity: 0, x: -8 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: index * 0.03 }}
+                            className={`transition-colors duration-200 ${hoverRowClass}`}
+                          >
+                            <td className={`p-4 text-sm font-medium opacity-80 border-b ${borderClass}`}>{criterion}</td>
+                            {selectedModels.map((model) => (
+                              <td key={model} className={`p-4 text-sm font-mono border-b border-l ${borderClass}`}>
+                                <span className={`px-2.5 py-1 rounded-lg ${BENCHMARK_DATA[model][index] > 85 ? "text-green-400 bg-green-400/10" : "text-yellow-400 bg-yellow-400/10"}`}>
+                                  {BENCHMARK_DATA[model][index].toFixed(1)}%
+                                </span>
+                              </td>
+                            ))}
+                          </motion.tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      <header className="flex-none flex justify-between items-center px-4 py-3 z-10 relative border-b border-transparent">
-        <div className="flex items-center gap-4">
-          <button onClick={() => setShowHistory(!showHistory)} className={`p-2 rounded-full hover:${isDark ? 'bg-white/10' : 'bg-black/5'} transition-colors`}>
-            <Menu size={24} className={isDark ? 'text-white' : 'text-gray-700'} />
-          </button>
-          <div className="flex items-center gap-2 select-none">
-            <span className="text-xl font-medium tracking-wide">AURA</span>
-            <Sparkles size={18} className="text-[#a8c7fa]" />
-          </div>
-        </div>
-
+      <motion.header
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={transitionSmooth}
+        className={`flex-none flex justify-between items-center px-4 md:px-6 py-3 z-20 relative border-b ${borderClass} ${elementBgClass}`}
+      >
         <div className="flex items-center gap-3">
-          <button onClick={() => setIsDark(!isDark)} className={`p-2 rounded-full hover:${isDark ? 'bg-white/10' : 'bg-black/5'} transition-colors`}>
-            {isDark ? <Sun size={20} className="text-[#e3e3e3]" /> : <Moon size={20} />}
-          </button>
-          
-          <button 
-            onClick={() => setShowProfileModal(true)} 
-            className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white select-none shadow-md hover:scale-105 transition-transform ${isDark ? 'bg-purple-900' : 'bg-purple-600'}`} 
+          <motion.button
+            whileHover={{ scale: 1.08, boxShadow: isDark ? "0 0 16px rgba(34,211,238,0.3)" : "0 0 12px rgba(147,51,234,0.2)" }}
+            whileTap={{ scale: 0.92 }}
+            onClick={() => setShowHistory(!showHistory)}
+            className={`p-2.5 rounded-xl ${ghostBtnClass} ${isDark ? "text-white" : "text-gray-700"}`}
+          >
+            <Menu size={22} />
+          </motion.button>
+          <motion.div
+            className="flex items-center gap-2 select-none"
+            animate={{ opacity: [0.85, 1, 0.85] }}
+            transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
+          >
+            <span className={`text-xl font-semibold tracking-wide ${logoClass}`}>AURA</span>
+            <Sparkles size={16} className="text-[#a8c7fa] animate-logo-pulse" />
+          </motion.div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <motion.button
+            whileHover={{ scale: 1.08, rotate: 15 }}
+            whileTap={{ scale: 0.92 }}
+            onClick={() => setIsDark(!isDark)}
+            className={`p-2.5 rounded-xl ${ghostBtnClass} ${isDark ? "text-white" : "text-gray-700"}`}
+          >
+            {isDark ? <Sun size={20} /> : <Moon size={20} />}
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.1, rotate: [0, -5, 5, 0] }}
+            whileTap={{ scale: 0.92 }}
+            onClick={() => setShowProfileModal(true)}
+            className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white select-none shadow-md bg-gradient-to-br from-purple-600 to-cyan-500 ring-2 ring-purple-500/30"
             title="View Profile"
           >
-            {userName ? userName.charAt(0).toUpperCase() : 'U'}
-          </button>
+            {userName ? userName.charAt(0).toUpperCase() : "U"}
+          </motion.button>
         </div>
-      </header>
+      </motion.header>
 
-      <div className="flex-1 flex overflow-hidden w-full relative">
-        <div className={`flex-none h-full transition-all duration-300 ease-in-out flex flex-col ${elementBgClass} ${showHistory ? `w-64 md:w-72 opacity-100 border-r ${borderClass}` : "w-0 opacity-0 border-r-0 border-transparent overflow-hidden"}`}>
-          <div className="p-4 flex justify-between items-center border-b border-white/5 min-w-[16rem]">
-            <span className="font-medium tracking-wide">Recent Chats</span>
-            <button onClick={() => setShowHistory(false)} className="p-1 rounded-full hover:bg-white/10"><X size={20} /></button>
+      <div className="flex-1 flex overflow-hidden w-full relative z-10">
+        {/* Mobile sidebar overlay */}
+        <AnimatePresence>
+          {showHistory && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-10 sidebar-overlay md:hidden"
+              onClick={() => setShowHistory(false)}
+            />
+          )}
+        </AnimatePresence>
+
+        <motion.div
+          initial={false}
+          animate={{
+            width: showHistory ? "18rem" : 0,
+            opacity: showHistory ? 1 : 0,
+          }}
+          transition={{ type: "spring", stiffness: 380, damping: 36 }}
+          className={`flex-none h-full flex flex-col z-20 absolute md:relative ${elementBgClass} border-r ${borderClass} overflow-hidden`}
+        >
+          <div className={`p-4 flex justify-between items-center border-b ${borderClass} min-w-[17rem]`}>
+            <span className="font-semibold tracking-wide text-sm uppercase opacity-70">Recent Chats</span>
+            <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => setShowHistory(false)} className={`p-1.5 rounded-lg ${ghostBtnClass}`}>
+              <X size={18} />
+            </motion.button>
           </div>
-          
-          <div className="flex-1 overflow-y-auto p-4 custom-scrollbar min-w-[16rem]">
+
+          <div className="flex-1 overflow-y-auto p-3 custom-scrollbar min-w-[17rem]">
             {chatHistory.length === 0 ? (
-              <div className="text-sm opacity-50 text-center mt-4">No recent chats.</div>
+              <p className="text-sm opacity-40 text-center mt-8">No recent chats.</p>
             ) : (
-              chatHistory.map((session) => (
-                <div 
-                  key={session.id} 
-                  onClick={() => loadChat(session)} 
-                  className={`group py-3 px-3 rounded-xl flex items-center justify-between cursor-pointer transition-colors ${activeSessionId === session.id ? (isDark ? 'bg-white/10 text-white' : 'bg-black/10 text-black') : (isDark ? 'hover:bg-white/5 text-gray-400 hover:text-white' : 'hover:bg-black/5 text-gray-600 hover:text-black')}`}
+              chatHistory.map((session, i) => (
+                <motion.div
+                  key={session.id}
+                  initial={{ opacity: 0, x: -12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.04 }}
+                  onClick={() => loadChat(session)}
+                  className={`group py-3 px-3 rounded-xl flex items-center justify-between cursor-pointer transition-all duration-200 mb-1 ${
+                    activeSessionId === session.id
+                      ? activeRowClass
+                      : isDark
+                        ? `opacity-70 ${hoverRowClass}`
+                        : `text-gray-600 ${hoverRowClass} hover:text-gray-900`
+                  }`}
                 >
                   <div className="flex items-center gap-3 overflow-hidden">
-                    <MessageSquare size={16} className="opacity-60 flex-none" />
+                    <MessageSquare size={15} className="opacity-50 flex-none" />
                     <span className="text-sm truncate">{session.title}</span>
                   </div>
-                  
-                  <button 
-                    onClick={(e) => deleteChat(e, session.id)} 
-                    className={`opacity-0 group-hover:opacity-100 p-1.5 rounded-full hover:bg-red-500/20 text-red-500 transition-all flex-none ${activeSessionId === session.id ? 'opacity-100' : ''}`}
+                  <motion.button
+                    whileHover={{ scale: 1.15 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={(e) => deleteChat(e, session.id)}
+                    className={`opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-red-500/20 text-red-400 transition-all flex-none ${activeSessionId === session.id ? "opacity-100" : ""}`}
                     title="Delete Chat"
                   >
                     <Trash2 size={14} />
-                  </button>
-                </div>
+                  </motion.button>
+                </motion.div>
               ))
             )}
           </div>
-        </div>
+        </motion.div>
 
-        <main className="flex-1 flex flex-col md:flex-row gap-4 p-4 md:p-6 overflow-hidden w-full transition-all duration-300 ease-in-out">
+        <main className="flex-1 flex flex-col min-h-0 overflow-hidden w-full">
+          <AnimatePresence mode="wait">
           {!hasProceeded ? (
-            <div className="flex-1 flex flex-col items-center justify-center w-full h-full select-none overflow-y-auto pb-10">
-              <Sparkles size={64} className="text-[#a8c7fa] mb-6 animate-pulse" />
-              <h1 className="text-6xl md:text-8xl font-semibold tracking-tighter mb-4 text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-500 to-pink-500">AURA</h1>
-              <p className="text-xl md:text-2xl font-medium opacity-80 tracking-widest text-center mb-10">AI Unified Response Analyzer</p>
-              
-              <div className={`w-full max-w-lg p-8 rounded-3xl border ${borderClass} ${elementBgClass} shadow-lg flex flex-col items-center`}>
-                <p className="text-sm opacity-60 font-bold tracking-widest mb-6">SELECT ANY MODELS (MAX 3)</p>
-                <div className="grid grid-cols-2 gap-4 w-full mb-8">
-                  {AVAILABLE_MODELS.map((model) => {
+            <motion.div
+              key="landing"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={transitionFast}
+              className="flex-1 flex flex-col items-center justify-center w-full min-h-0 overflow-y-auto py-3 px-3 md:px-5"
+            >
+              <div className="flex flex-col items-center w-full max-w-lg gap-3 py-2">
+              <div className="flex items-center justify-center gap-3 shrink-0 min-h-[3.25rem] py-1 overflow-hidden">
+                <motion.div
+                  animate={{ y: [0, -7, 0] }}
+                  transition={{ repeat: Infinity, duration: 2.8, ease: "easeInOut" }}
+                  className="flex items-center justify-center shrink-0 will-change-transform"
+                >
+                  <Sparkles size={32} className="text-[#a8c7fa] animate-logo-pulse" />
+                </motion.div>
+                <motion.h1
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.05, ...transitionSmooth }}
+                  className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tighter gradient-text-animated"
+                >
+                  AURA
+                </motion.h1>
+              </div>
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.1 }}
+                className={`text-xs sm:text-sm font-medium tracking-[0.12em] text-center uppercase shrink-0 ${isDark ? "opacity-60" : "text-gray-600"}`}
+              >
+                AI Unified Response Analyzer
+              </motion.p>
+
+              <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15, ...transitionSmooth }}
+                className={`w-full p-5 sm:p-6 md:p-8 rounded-3xl ${cardBgClass} flex flex-col items-center shrink-0`}
+              >
+                <p className="text-xs opacity-50 font-bold tracking-[0.2em] mb-4 uppercase">Select Any Models (Max 3)</p>
+                <div className="grid grid-cols-2 gap-2.5 sm:gap-3 w-full mb-5">
+                  {AVAILABLE_MODELS.map((model, i) => {
                     const isSelected = selectedModels.includes(model);
                     const isDisabled = !isSelected && selectedModels.length >= 3;
                     return (
-                      <div key={model} onClick={() => { if (!isDisabled) toggleModel(model); }} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer border transition-all ${isSelected ? 'border-purple-500 bg-purple-500/10' : (isDark ? 'border-gray-700 hover:border-gray-500' : 'border-gray-300 hover:border-gray-400')} ${isDisabled ? 'opacity-40 cursor-not-allowed' : ''}`}>
-                        <div className={`w-5 h-5 rounded flex items-center justify-center border ${isSelected ? 'bg-purple-500 border-purple-500' : (isDark ? 'border-gray-600' : 'border-gray-400')}`}>
-                          {isSelected && <Check size={14} className="text-white" />}
+                      <motion.div
+                        key={model}
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: 0.3 + i * 0.05, type: "spring", stiffness: 400, damping: 25 }}
+                        whileHover={!isDisabled ? { scale: 1.03, y: -2 } : {}}
+                        whileTap={!isDisabled ? { scale: 0.97 } : {}}
+                        onClick={() => { if (!isDisabled) toggleModel(model); }}
+                        className={`model-card flex items-center gap-3 p-3.5 rounded-2xl border transition-all duration-200 ${
+                          isSelected ? (isDark ? "model-card-selected" : "model-card-selected-light") : isDark ? "border-white/10" : "border-violet-200/70 hover:border-violet-300"
+                        } ${isDisabled ? "model-card-disabled opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
+                      >
+                        <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all duration-200 ${
+                          isSelected ? "bg-purple-500 border-purple-500 scale-110" : isDark ? "border-white/20" : "border-black/20"
+                        }`}>
+                          <AnimatePresence>
+                            {isSelected && (
+                              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}>
+                                <Check size={13} className="text-white" />
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                         </div>
-                        <span className="text-base font-medium">{model}</span>
-                      </div>
+                        <span className="text-sm font-medium">{model}</span>
+                      </motion.div>
                     );
                   })}
                 </div>
-                <button onClick={() => setHasProceeded(true)} disabled={selectedModels.length === 0} className={`w-full py-4 rounded-xl font-bold tracking-wide transition-all ${selectedModels.length > 0 ? 'bg-gradient-to-r from-cyan-500 to-purple-600 text-white shadow-md hover:scale-[1.02]' : 'bg-gray-500/20 text-gray-500 cursor-not-allowed'}`}>
-                  PROCEED
-                </button>
+                <motion.button
+                  whileHover={selectedModels.length > 0 ? { scale: 1.03, boxShadow: "0 0 30px rgba(147,51,234,0.5)" } : {}}
+                  whileTap={selectedModels.length > 0 ? { scale: 0.97 } : {}}
+                  onClick={() => setHasProceeded(true)}
+                  disabled={selectedModels.length === 0}
+                  className={`w-full py-4 rounded-2xl font-bold tracking-wide transition-all duration-300 ${
+                    selectedModels.length > 0 ? "btn-primary text-white btn-neon-pulse" : isDark ? "bg-white/5 text-white/30 cursor-not-allowed" : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                  }`}
+                >
+                  Proceed
+                </motion.button>
+              </motion.div>
               </div>
-            </div>
+            </motion.div>
           ) : (
-            selectedModels.map((modelName) => {
+            <motion.div
+              key="chat"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={transitionSmooth}
+              className="flex-1 flex flex-col min-h-0 w-full gpu-smooth"
+            >
+              <div className="flex-1 flex flex-col md:flex-row gap-3 md:gap-4 p-3 md:p-5 min-h-0 overflow-hidden">
+            {selectedModels.map((modelName, colIndex) => {
               const latestTurn = activeTurns[activeTurns.length - 1];
               const isBestOverall = latestTurn?.bestModel === modelName;
 
               return (
-                <div key={modelName} className={`flex-1 flex flex-col h-full rounded-3xl border transition-all duration-500 ${elementBgClass} overflow-hidden ${isBestOverall ? 'border-green-500 shadow-[0_0_20px_rgba(34,197,94,0.3)] ring-1 ring-green-500' : borderClass}`}>
-                  <div className={`px-6 py-5 flex justify-between items-center border-b ${isBestOverall ? 'border-green-500/30' : borderClass} flex-none`}>
-                    
-                    <div className="flex items-baseline gap-2 font-bold text-xl md:text-2xl tracking-tight">
+                <motion.div
+                  key={modelName}
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ ...transitionSmooth, delay: colIndex * 0.07 }}
+                  className={`flex-1 flex flex-col h-full min-h-0 rounded-3xl overflow-hidden ${
+                    isDark ? `${cardBgClass} futuristic-panel-dark panel-glow-dark` : `${cardBgClass} futuristic-panel-light panel-glow-light`
+                  } ${isBestOverall ? "animate-border-glow border-green-500/60" : ""} ${loading ? (isDark ? "loading-shimmer" : "loading-shimmer loading-shimmer-light") : ""}`}
+                >
+                  <div className={`px-5 py-4 flex justify-between items-center border-b flex-none ${isBestOverall ? "border-green-500/30" : borderClass}`}>
+                    <div className={`flex items-baseline gap-2 font-bold text-lg md:text-xl tracking-tight ${isDark ? "" : "text-gray-900"}`}>
                       {modelName}
-                      <span className="text-xs md:text-sm font-normal opacity-50 tracking-normal">({MODEL_VERSIONS[modelName] || "v1.0"})</span>
+                      <span className={`text-xs font-normal tracking-normal ${isDark ? "opacity-40" : "text-gray-500"}`}>({MODEL_VERSIONS[modelName] || "v1.0"})</span>
                     </div>
-                    
-                    <div className="flex items-center gap-3">
-                      {isBestOverall && !loading && <span className="px-3 py-1 bg-green-500/20 text-green-400 text-xs font-bold rounded-full border border-green-500/30 animate-in fade-in zoom-in">BEST RESPONSE</span>}
-                      {loading && <span className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></span>}
-                      <button onClick={() => toggleModel(modelName)} className="p-1.5 rounded-full hover:bg-red-500/20 hover:text-red-400 transition-colors opacity-50 hover:opacity-100">
-                        <X size={18} />
-                      </button>
+                    <div className="flex items-center gap-2">
+                      <AnimatePresence>
+                        {isBestOverall && !loading && (
+                          <motion.span
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.8 }}
+                            className="px-3 py-1 best-badge text-green-400 text-xs font-bold rounded-full"
+                          >
+                            BEST RESPONSE
+                          </motion.span>
+                        )}
+                      </AnimatePresence>
+                      {loading && (
+                        <motion.span
+                          animate={{ rotate: 360 }}
+                          transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
+                          className={`w-4 h-4 border-2 border-t-transparent rounded-full ${isDark ? "border-cyan-400" : "border-purple-500"}`}
+                        />
+                      )}
+                      <motion.button
+                        whileHover={{ scale: 1.15 }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => toggleModel(modelName)}
+                        className="p-1.5 rounded-lg hover:bg-red-500/15 hover:text-red-400 transition-colors opacity-40 hover:opacity-100"
+                      >
+                        <X size={16} />
+                      </motion.button>
                     </div>
-
                   </div>
 
-                  <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 chat-scroll-container">
+                  <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-5 chat-scroll-container">
                     {activeTurns.map((turn, idx) => (
-                      <div key={idx} className="flex flex-col space-y-4 mb-6 animate-in slide-in-from-bottom-2 fade-in duration-300">
-                        
-                        <div className="flex justify-end w-full">
-                          <div className={`max-w-[85%] px-5 py-3 rounded-3xl rounded-tr-sm text-[15px] leading-relaxed shadow-md ${isDark ? 'bg-gradient-to-r from-purple-600 to-cyan-600 text-white' : 'bg-gradient-to-r from-purple-500 to-cyan-500 text-white'}`}>
+                      <div key={idx} className="flex flex-col space-y-3 mb-6">
+                        <motion.div
+                          initial={{ opacity: 0, x: 16 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ ...transitionFast, delay: 0.05 }}
+                          className="flex justify-end w-full"
+                        >
+                          <div className={`max-w-[85%] px-4 py-3 rounded-2xl rounded-tr-sm text-[15px] leading-relaxed text-white ${
+                            isDark ? "bubble-user-dark bubble-enter-glow-dark" : "bubble-user-light bubble-enter-glow-light"
+                          }`}>
                             {turn.prompt}
                           </div>
-                        </div>
-
-                        <div className="flex justify-start w-full">
-                          <div className={`max-w-[95%] px-5 py-4 rounded-3xl rounded-tl-sm text-[15px] leading-relaxed shadow-sm whitespace-pre-wrap ${isDark ? 'bg-[#2a2b2c] text-[#e3e3e3] border border-white/5' : 'bg-white text-gray-800 border border-gray-200'}`}>
-                            {turn.results[modelName] || "No response generated."}
+                        </motion.div>
+                        <motion.div
+                          initial={{ opacity: 0, x: -16 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ ...transitionFast, delay: 0.1 }}
+                          className="flex justify-start w-full"
+                        >
+                          <div className={`max-w-[95%] px-4 py-3.5 rounded-2xl rounded-tl-sm text-[15px] leading-relaxed whitespace-pre-wrap ${
+                            isDark ? "bubble-ai-dark text-[#f0f0f5]" : "bubble-ai-light"
+                          }`}>
+                            {renderResponse(turn.results[modelName] || "No response generated.")}
                           </div>
-                        </div>
-
+                        </motion.div>
                       </div>
                     ))}
                   </div>
-
-                </div>
+                </motion.div>
               );
-            })
-          )}
-        </main>
-      </div>
+            })}
+              </div>
 
-      {hasProceeded && (
-        <footer className="flex-none px-4 md:px-8 pb-6 flex items-end gap-3 max-w-5xl mx-auto w-full relative z-10 animate-in slide-in-from-bottom-10">
-          <button onClick={handleNewChat} title="New Chat" className={`h-12 px-4 flex-none flex items-center justify-center gap-2 rounded-full transition-colors font-medium text-sm ${isDark ? 'bg-[#1e1f20] hover:bg-white/10 text-[#e3e3e3]' : 'bg-[#f0f4f9] hover:bg-black/5 text-gray-700'}`}>
-            <SquarePen size={18} /> <span className="hidden sm:inline">New Chat</span>
-          </button>
-          <button onClick={() => setShowReport(true)} title="Report Analysis" className={`h-12 px-4 flex-none flex items-center justify-center gap-2 rounded-full transition-colors font-medium text-sm border ${isDark ? 'bg-[#1e1f20] border-purple-500/30 hover:bg-purple-500/10 text-purple-400' : 'bg-white border-purple-300 hover:bg-purple-50 text-purple-600'}`}>
-            <BarChart3 size={18} /> <span className="hidden sm:inline">Report Analysis</span>
-          </button>
+              <footer className="flex-none px-4 md:px-8 pb-5 pt-2 flex items-end gap-2 md:gap-3 max-w-5xl mx-auto w-full relative z-10">
+          <motion.button
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.96 }}
+            onClick={handleNewChat}
+            title="New Chat"
+            className={`h-12 px-4 flex-none flex items-center justify-center gap-2 rounded-2xl font-medium text-sm transition-colors duration-200 ${
+              isDark ? elementBgClass : `${elementBgClass} hover:bg-violet-50/80 text-violet-900`
+            }`}
+          >
+            <SquarePen size={17} /> <span className="hidden sm:inline">New Chat</span>
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.96 }}
+            onClick={() => setShowReport(true)}
+            title="Report Analysis"
+            className={`h-12 px-4 flex-none flex items-center justify-center gap-2 rounded-2xl font-medium text-sm border transition-colors duration-200 ${
+              isDark ? `${elementBgClass} border-purple-500/30 text-purple-400 hover:bg-purple-500/10` : `${elementBgClass} border-violet-300 text-violet-700 hover:bg-violet-50`
+            }`}
+          >
+            <BarChart3 size={17} /> <span className="hidden sm:inline">Report Analysis</span>
+          </motion.button>
 
           <div ref={menuRef} className="relative flex-none">
-            <button onClick={() => setShowModelMenu(!showModelMenu)} className={`w-12 h-12 flex items-center justify-center rounded-full transition-colors ${isDark ? 'bg-[#1e1f20] hover:bg-white/10' : 'bg-[#f0f4f9] hover:bg-black/5'}`}>
-              <Plus size={24} className={isDark ? 'text-[#e3e3e3]' : 'text-gray-700'} />
-            </button>
-            {showModelMenu && (
-              <div className={`absolute bottom-16 left-0 p-3 rounded-2xl shadow-xl border w-48 mb-2 z-50 ${elementBgClass} ${borderClass}`}>
-                <p className="text-xs font-semibold opacity-60 mb-2 px-2 select-none">Models (Max 3)</p>
-                {AVAILABLE_MODELS.map((model) => {
-                  const isSelected = selectedModels.includes(model);
-                  const isDisabled = !isSelected && selectedModels.length >= 3;
-                  return (
-                    <div key={model} onClick={() => { if (!isDisabled) toggleModel(model); }} className={`flex items-center gap-3 px-2 py-2 rounded-lg cursor-pointer ${isDisabled ? 'opacity-40 cursor-not-allowed' : `hover:${isDark ? 'bg-white/5' : 'bg-black/5'}`}`}>
-                      <div className={`w-4 h-4 rounded flex items-center justify-center border ${isSelected ? 'bg-blue-500 border-blue-500' : (isDark ? 'border-gray-500' : 'border-gray-400')}`}>
-                        {isSelected && <Check size={12} className="text-white" />}
+            <motion.button
+              type="button"
+              whileHover={{ scale: 1.06, rotate: 90 }}
+              whileTap={{ scale: 0.94 }}
+              animate={{ rotate: showModelMenu ? 45 : 0 }}
+              transition={{ type: "spring", stiffness: 320, damping: 22 }}
+              onClick={() => setShowModelMenu(!showModelMenu)}
+              className={`w-12 h-12 flex items-center justify-center rounded-2xl transition-colors duration-200 ${
+                isDark ? elementBgClass : `${elementBgClass} hover:bg-violet-50/80 text-violet-800`
+              }`}
+            >
+              <Plus size={22} />
+            </motion.button>
+            <AnimatePresence>
+              {showModelMenu && (
+                <motion.div
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 4 }}
+                  transition={transitionFast}
+                  className={`absolute bottom-14 left-0 p-2 rounded-2xl shadow-2xl w-48 mb-2 z-50 ${cardBgClass}`}
+                >
+                  <p className="text-xs font-semibold opacity-40 mb-2 px-2 select-none uppercase tracking-wider">Models (Max 3)</p>
+                  {AVAILABLE_MODELS.map((model) => {
+                    const isSelected = selectedModels.includes(model);
+                    const isDisabled = !isSelected && selectedModels.length >= 3;
+                    return (
+                      <div
+                        key={model}
+                        onClick={() => { if (!isDisabled) toggleModel(model); }}
+                        className={`flex items-center gap-3 px-2.5 py-2 rounded-xl cursor-pointer transition-colors duration-150 ${
+                          isDisabled ? "opacity-35 cursor-not-allowed" : hoverRowClass
+                        }`}
+                      >
+                        <div className={`w-4 h-4 rounded-md flex items-center justify-center border transition-colors ${
+                          isSelected ? "bg-cyan-500 border-cyan-500" : isDark ? "border-white/20" : "border-black/20"
+                        }`}>
+                          {isSelected && <Check size={11} className="text-white" />}
+                        </div>
+                        <span className="text-sm select-none">{model}</span>
                       </div>
-                      <span className="text-sm select-none">{model}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
-          <div className={`flex-1 relative rounded-3xl ${elementBgClass} ${isDark ? '' : 'border border-gray-200'}`}>
+          <div className={`flex-1 relative rounded-2xl ${elementBgClass} ${isDark ? "input-bar-dark" : "input-bar-light"}`}>
             <textarea
-              value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={handleKeyDown}
-              placeholder="Enter a prompt here" rows={1} style={{ minHeight: '56px', maxHeight: '200px' }}
-              className="w-full py-4 pl-6 pr-14 bg-transparent focus:outline-none resize-none custom-scrollbar"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Enter a prompt here..."
+              rows={1}
+              style={{ minHeight: "52px", maxHeight: "200px" }}
+              className={`w-full py-3.5 pl-5 pr-14 bg-transparent focus:outline-none resize-none custom-scrollbar ${isDark ? "placeholder:opacity-40" : "placeholder:text-gray-400 text-gray-900"}`}
             />
-            <button onClick={loading ? handleStop : handleSend} disabled={(!prompt.trim() && !loading) || selectedModels.length === 0} className={`absolute right-2 bottom-2 p-2 rounded-full transition-colors ${loading ? 'bg-[#1a1a1a] text-[#e3e3e3] hover:bg-[#333] border border-white/20' : prompt.trim() && selectedModels.length > 0 ? (isDark ? 'bg-white text-black hover:bg-gray-200' : 'bg-black text-white hover:bg-gray-800') : 'text-gray-500 cursor-not-allowed opacity-50'}`}>
-              {loading ? <Square size={16} className="fill-current" /> : <ArrowUp size={20} />}
-            </button>
+            <motion.button
+              whileHover={{ scale: 1.08 }}
+              whileTap={{ scale: 0.92 }}
+              onClick={loading ? handleStop : handleSend}
+              disabled={(!prompt.trim() && !loading) || selectedModels.length === 0}
+              className={`absolute right-2 bottom-2 p-2.5 rounded-xl transition-colors duration-200 ${
+                loading
+                  ? "bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30"
+                  : prompt.trim() && selectedModels.length > 0
+                    ? isDark
+                      ? "bg-white text-black hover:bg-gray-100"
+                      : "bg-black text-white hover:bg-gray-800"
+                    : "opacity-30 cursor-not-allowed"
+              }`}
+            >
+              {loading ? <Square size={15} className="fill-current" /> : <ArrowUp size={18} />}
+            </motion.button>
           </div>
-        </footer>
-      )}
+              </footer>
+            </motion.div>
+          )}
+          </AnimatePresence>
+        </main>
+      </div>
     </div>
   );
 }

@@ -1,10 +1,10 @@
 "use client";
 import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { initializeApp, getApps } from "firebase/app";
 import { getFirestore, collection, onSnapshot, doc, updateDoc } from "firebase/firestore";
-import { Lock, LogOut, Ban, Users, Activity, CheckCircle } from "lucide-react";
+import { Lock, LogOut, Ban, Users, Activity, CheckCircle, Sparkles, Shield } from "lucide-react";
 
-// Exact same secure config as your main page
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY as string,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN as string,
@@ -62,7 +62,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (!isAuthenticated) return;
     const ticker = setInterval(() => {
-      setUsers((prevUsers) => 
+      setUsers((prevUsers) =>
         prevUsers.map((user) => ({
           ...user,
           elapsedSeconds: (user.isBanned || user.isLoggedOut) ? user.elapsedSeconds : user.elapsedSeconds + 1
@@ -82,7 +82,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // AUTOMATED EMAIL + FORCE LOGOUT
   const forceLogoutUser = async (email: string) => {
     if (confirm(`Are you sure you want to log out ${email}? An automated email will be sent to them.`)) {
       await updateDoc(doc(db, "users", email), { forceLogout: true });
@@ -90,21 +89,18 @@ export default function AdminDashboard() {
     }
   };
 
-  // AUTOMATED EMAIL + REVERSIBLE BAN WITH DATA WIPE
   const toggleBanUser = async (user: UserData) => {
     if (user.isBanned) {
-      // UNBAN
       if (confirm(`Restore access for ${user.email}? Their previous data will remain wiped.`)) {
         await updateDoc(doc(db, "users", user.email), { isBanned: false, forceLogout: false });
       }
     } else {
-      // BAN
       if (confirm(`⚠️ WARNING: Permanently BAN ${user.email}? This wipes their chats and sends them a notification email.`)) {
-        await updateDoc(doc(db, "users", user.email), { 
-          isBanned: true, 
-          chats: [], // Wipes their history forever
-          globalContext: "", // Wipes global memory
-          forceLogout: true 
+        await updateDoc(doc(db, "users", user.email), {
+          isBanned: true,
+          chats: [],
+          globalContext: "",
+          forceLogout: true
         });
         fetch('/api/admin-action', { method: 'POST', body: JSON.stringify({ email: user.email, action: 'ban' }) });
       }
@@ -131,129 +127,171 @@ export default function AdminDashboard() {
 
   if (!isAuthenticated) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gray-100 font-sans">
-        <form onSubmit={handleLogin} className="bg-white p-10 rounded-2xl shadow-2xl max-w-sm w-full flex flex-col items-center">
-          <Lock size={48} className="text-blue-600 mb-6" />
-          <h1 className="text-2xl font-bold mb-6 text-gray-800 tracking-tight">Admin Override</h1>
-          <input 
-            type="password" 
-            placeholder="Master Password" 
+      <div className="h-screen flex items-center justify-center aura-bg-dark font-sans relative overflow-hidden">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-1/3 left-1/3 w-96 h-96 rounded-full bg-purple-500/10 blur-3xl animate-mesh-shift" />
+          <div className="absolute bottom-1/3 right-1/3 w-80 h-80 rounded-full bg-cyan-500/10 blur-3xl animate-mesh-shift" style={{ animationDelay: "3s" }} />
+        </div>
+        <motion.form
+          initial={{ opacity: 0, y: 24, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ type: "spring", stiffness: 260, damping: 24 }}
+          onSubmit={handleLogin}
+          className="glass-card-dark p-10 rounded-3xl shadow-2xl max-w-sm w-full flex flex-col items-center mx-4 relative z-10"
+        >
+          <motion.div
+            animate={{ y: [0, -6, 0] }}
+            transition={{ repeat: Infinity, duration: 2.5, ease: "easeInOut" }}
+          >
+            <Shield size={52} className="text-purple-400 mb-6 drop-shadow-[0_0_16px_rgba(168,85,247,0.5)]" />
+          </motion.div>
+          <h1 className="text-2xl font-bold mb-2 text-[#f0f0f5] tracking-tight">Admin Override</h1>
+          <p className="text-sm opacity-40 mb-8 uppercase tracking-[0.15em]">AURA Control Panel</p>
+          <input
+            type="password"
+            placeholder="Master Password"
             value={passwordInput}
             onChange={(e) => setPasswordInput(e.target.value)}
-            className="w-full p-4 rounded-xl border border-gray-300 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center tracking-widest"
+            className="w-full p-4 rounded-2xl input-dark text-white text-center tracking-[0.3em] font-mono mb-4"
           />
-          <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-colors">
-            ACCESS SYSTEM
-          </button>
-        </form>
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            type="submit"
+            className="w-full btn-primary text-white font-bold py-4 rounded-2xl tracking-widest uppercase"
+          >
+            Access System
+          </motion.button>
+        </motion.form>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#f4f7fb] text-gray-800 font-sans p-8">
+    <div className="min-h-screen aura-bg-dark text-[#f0f0f5] font-sans p-6 md:p-8">
       <div className="max-w-7xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
+        <motion.div
+          initial={{ opacity: 0, y: -16 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8"
+        >
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg">
-              <Users className="text-white" size={24} />
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg bg-gradient-to-br from-purple-600 to-cyan-500">
+              <Users className="text-white" size={22} />
             </div>
             <div>
-              <h1 className="text-3xl font-bold tracking-tight text-gray-900">AURA Admin Control</h1>
-              <p className="text-sm text-gray-500 font-medium">System Override & Monitoring</p>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl md:text-3xl font-bold tracking-tight gradient-text-subtle">AURA Admin Control</h1>
+                <Sparkles size={16} className="text-[#a8c7fa] animate-pulse-glow" />
+              </div>
+              <p className="text-sm opacity-40 font-medium mt-0.5">System Override & Monitoring</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 bg-green-50 border border-green-200 text-green-700 px-4 py-2 rounded-lg font-medium shadow-sm">
-            <Activity size={18} className="animate-pulse" />
+          <motion.div
+            animate={{ opacity: [0.7, 1, 0.7] }}
+            transition={{ repeat: Infinity, duration: 2 }}
+            className="flex items-center gap-2 bg-green-500/10 border border-green-500/25 text-green-400 px-4 py-2 rounded-xl font-medium text-sm"
+          >
+            <Activity size={16} />
             <span>Live Data Active</span>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
 
-        <div className="bg-white rounded-xl shadow-xl overflow-hidden border border-gray-200">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-[#4472c4] text-white">
-                <th className="p-4 font-semibold text-sm border-r border-white/20 w-16 text-center">SL No</th>
-                <th className="p-4 font-semibold text-sm border-r border-white/20">NAME</th>
-                <th className="p-4 font-semibold text-sm border-r border-white/20 min-w-[250px]">E-MAIL</th>
-                <th className="p-4 font-semibold text-sm border-r border-white/20 w-32">Elapsed Time</th>
-                <th className="p-4 font-semibold text-sm border-r border-white/20 w-40">LOGGED ON</th>
-                <th className="p-4 font-semibold text-sm border-r border-white/20 w-40">ACTIVE STATUS</th>
-                <th className="p-4 font-semibold text-sm border-r border-white/20 text-center w-28">Action 1</th>
-                <th className="p-4 font-semibold text-sm text-center w-28">Action 2</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading && users.length === 0 ? (
-                <tr><td colSpan={8} className="p-8 text-center text-gray-500">Connecting to live database...</td></tr>
-              ) : users.length === 0 ? (
-                <tr><td colSpan={8} className="p-8 text-center text-gray-500">No users found.</td></tr>
-              ) : (
-                users.map((user, index) => {
-                  const rowBg = index % 2 === 0 ? 'bg-white' : 'bg-[#e9eef5]';
-                  return (
-                    <tr key={user.email} className={`${rowBg} hover:bg-[#d6e0f0] transition-colors`}>
-                      <td className="p-4 text-sm font-medium border-r border-gray-300 text-center">{index + 1}.</td>
-                      <td className="p-4 text-sm font-bold border-r border-gray-300">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span>{user.name}</span>
-                        </div>
-                      </td>
-                      <td className="p-4 text-sm border-r border-gray-300 text-gray-700 break-all">{user.email}</td>
-                      <td className={`p-4 text-sm font-mono border-r border-gray-300 font-semibold ${user.isLoggedOut || user.isBanned ? 'text-gray-500' : 'text-blue-700'}`}>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="glass-card-dark rounded-3xl shadow-2xl overflow-hidden"
+        >
+          <div className="overflow-x-auto custom-scrollbar">
+            <table className="w-full text-left border-collapse min-w-[900px]">
+              <thead>
+                <tr className="border-b border-white/10 bg-white/5">
+                  <th className="p-4 font-semibold text-xs uppercase tracking-wider opacity-60 w-16 text-center">SL No</th>
+                  <th className="p-4 font-semibold text-xs uppercase tracking-wider opacity-60">Name</th>
+                  <th className="p-4 font-semibold text-xs uppercase tracking-wider opacity-60 min-w-[220px]">E-Mail</th>
+                  <th className="p-4 font-semibold text-xs uppercase tracking-wider opacity-60 w-32">Elapsed Time</th>
+                  <th className="p-4 font-semibold text-xs uppercase tracking-wider opacity-60 w-40">Logged On</th>
+                  <th className="p-4 font-semibold text-xs uppercase tracking-wider opacity-60 w-36">Status</th>
+                  <th className="p-4 font-semibold text-xs uppercase tracking-wider opacity-60 text-center w-28">Action 1</th>
+                  <th className="p-4 font-semibold text-xs uppercase tracking-wider opacity-60 text-center w-28">Action 2</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading && users.length === 0 ? (
+                  <tr><td colSpan={8} className="p-12 text-center opacity-40">Connecting to live database...</td></tr>
+                ) : users.length === 0 ? (
+                  <tr><td colSpan={8} className="p-12 text-center opacity-40">No users found.</td></tr>
+                ) : (
+                  users.map((user, index) => (
+                    <motion.tr
+                      key={user.email}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.04 }}
+                      className="border-b border-white/5 hover:bg-white/5 transition-colors duration-200"
+                    >
+                      <td className="p-4 text-sm font-medium text-center opacity-60">{index + 1}.</td>
+                      <td className="p-4 text-sm font-semibold">{user.name}</td>
+                      <td className="p-4 text-sm opacity-70 break-all font-mono text-xs">{user.email}</td>
+                      <td className={`p-4 text-sm font-mono font-semibold ${user.isLoggedOut || user.isBanned ? "opacity-40" : "text-cyan-400"}`}>
                         {formatElapsedTime(user.elapsedSeconds)}
                       </td>
-                      <td className="p-4 text-sm border-r border-gray-300 text-gray-700">
-                        {formatDateTime(user.lastLogin)}
-                      </td>
-                      <td className="p-4 text-sm border-r border-gray-300 font-medium">
+                      <td className="p-4 text-sm opacity-60">{formatDateTime(user.lastLogin)}</td>
+                      <td className="p-4 text-sm font-medium">
                         {user.isBanned ? (
-                          <div className="flex items-center gap-2 text-red-600 font-bold">
-                            <span className="w-2.5 h-2.5 rounded-full bg-red-600"></span>Banned
+                          <div className="flex items-center gap-2 text-red-400 font-semibold">
+                            <span className="w-2 h-2 rounded-full bg-red-500" />Banned
                           </div>
                         ) : user.isLoggedOut ? (
-                          <div className="flex items-center gap-2 text-gray-500 font-bold">
-                            <span className="w-2.5 h-2.5 rounded-full bg-gray-400"></span>Offline
+                          <div className="flex items-center gap-2 opacity-50 font-semibold">
+                            <span className="w-2 h-2 rounded-full bg-gray-500" />Offline
                           </div>
                         ) : (
-                          <div className="flex items-center gap-2 text-green-600 font-bold">
-                            <span className="w-2.5 h-2.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse"></span>Active
+                          <div className="flex items-center gap-2 text-green-400 font-semibold">
+                            <span className="w-2 h-2 rounded-full bg-green-400 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse" />Active
                           </div>
                         )}
                       </td>
-                      <td className="p-4 border-r border-gray-300 text-center">
-                        <button 
+                      <td className="p-4 text-center">
+                        <motion.button
+                          whileHover={{ scale: 1.04 }}
+                          whileTap={{ scale: 0.96 }}
                           onClick={() => forceLogoutUser(user.email)}
                           disabled={user.isBanned || user.isLoggedOut}
-                          className="flex items-center justify-center gap-1 w-full bg-yellow-100 hover:bg-yellow-200 text-yellow-800 font-bold py-2 rounded border border-yellow-300 disabled:opacity-50 transition-colors text-xs"
+                          className="flex items-center justify-center gap-1 w-full bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 font-semibold py-2 rounded-xl border border-yellow-500/25 disabled:opacity-30 transition-all duration-200 text-xs"
                         >
-                          <LogOut size={14} /> Log Out
-                        </button>
+                          <LogOut size={13} /> Log Out
+                        </motion.button>
                       </td>
                       <td className="p-4 text-center">
                         {user.isBanned ? (
-                          <button 
+                          <motion.button
+                            whileHover={{ scale: 1.04 }}
+                            whileTap={{ scale: 0.96 }}
                             onClick={() => toggleBanUser(user)}
-                            className="flex items-center justify-center gap-1 w-full bg-green-100 hover:bg-green-200 text-green-700 font-bold py-2 rounded border border-green-300 transition-colors text-xs"
+                            className="flex items-center justify-center gap-1 w-full bg-green-500/10 hover:bg-green-500/20 text-green-400 font-semibold py-2 rounded-xl border border-green-500/25 transition-all duration-200 text-xs"
                           >
-                            <CheckCircle size={14} /> UNBAN
-                          </button>
+                            <CheckCircle size={13} /> UNBAN
+                          </motion.button>
                         ) : (
-                          <button 
+                          <motion.button
+                            whileHover={{ scale: 1.04 }}
+                            whileTap={{ scale: 0.96 }}
                             onClick={() => toggleBanUser(user)}
-                            className="flex items-center justify-center gap-1 w-full bg-red-100 hover:bg-red-200 text-red-700 font-bold py-2 rounded border border-red-300 transition-colors text-xs"
+                            className="flex items-center justify-center gap-1 w-full bg-red-500/10 hover:bg-red-500/20 text-red-400 font-semibold py-2 rounded-xl border border-red-500/25 transition-all duration-200 text-xs"
                           >
-                            <Ban size={14} /> BAN
-                          </button>
+                            <Ban size={13} /> BAN
+                          </motion.button>
                         )}
                       </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                    </motion.tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </motion.div>
       </div>
     </div>
   );
