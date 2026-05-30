@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef, useEffect, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, Sun, Moon, Plus, ArrowUp, Check, Sparkles, X, MessageSquare, Square, SquarePen, User, Mail, Key, Lock, Rocket, BarChart3, LogOut, Trash2 } from "lucide-react";
+import { Menu, Sun, Moon, Plus, ArrowUp, Check, Sparkles, X, MessageSquare, Square, User, Mail, Key, Lock, Rocket, LogOut, Trash2 } from "lucide-react";
 import { AuraBackground } from "./components/AuraBackground";
 import { CometCursor } from "./components/CometCursor";
 
@@ -45,6 +45,54 @@ type ChatSession = {
   prompt?: string; results?: Record<string, string>; bestModel?: string | null;
 };
 
+// Animated SVGs for Report and New Chat icons
+const AnimatedBarChart = ({ isHovered }: { isHovered: boolean }) => (
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <motion.line x1="18" y1="20" x2="18" y2="10" animate={isHovered ? { y2: [10, 15, 8, 10] } : { y2: 10 }} transition={{ repeat: Infinity, duration: 0.7, ease: "easeInOut" }} />
+    <motion.line x1="12" y1="20" x2="12" y2="4" animate={isHovered ? { y2: [4, 12, 2, 4] } : { y2: 4 }} transition={{ repeat: Infinity, duration: 0.8, ease: "easeInOut", delay: 0.1 }} />
+    <motion.line x1="6" y1="20" x2="6" y2="14" animate={isHovered ? { y2: [14, 8, 16, 14] } : { y2: 14 }} transition={{ repeat: Infinity, duration: 0.9, ease: "easeInOut", delay: 0.2 }} />
+  </svg>
+);
+
+const AnimatedSquarePen = ({ isHovered }: { isHovered: boolean }) => (
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 20h9" />
+    <motion.path
+      d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"
+      animate={isHovered ? { x: [-1, 1.5, -1], y: [1, -1.5, 1] } : { x: 0, y: 0 }}
+      transition={{ repeat: Infinity, duration: 0.5, ease: "linear" }}
+    />
+    <motion.line x1="6" y1="13" x2="11" y2="13" initial={{ opacity: 0, pathLength: 0 }} animate={isHovered ? { opacity: [0, 1, 0], pathLength: [0, 1, 1] } : { opacity: 0, pathLength: 0 }} transition={{ repeat: Infinity, duration: 0.8 }} />
+    <motion.line x1="6" y1="16" x2="9" y2="16" initial={{ opacity: 0, pathLength: 0 }} animate={isHovered ? { opacity: [0, 1, 0], pathLength: [0, 1, 1] } : { opacity: 0, pathLength: 0 }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.3 }} />
+  </svg>
+);
+
+// Dynamic Report Algorithm
+const generateDynamicScores = (prompt: string, text: string) => {
+  const textLength = text.length;
+  const wordCount = text.split(/\s+/).length;
+  // Safely checking for code blocks without breaking the markdown parser
+  const hasCode = text.includes('\`\`\`') ? 18 : 0;
+  const mathKeywords = ['+', '-', '=', '/', 'math', 'calculate', 'equation'].some(k => text.includes(k)) ? 16 : 0;
+  const logicKeywords = ['therefore', 'because', 'analyze', 'reason', 'step'].some(k => text.toLowerCase().includes(k)) ? 12 : 0;
+
+  const base = Math.min(65 + (textLength / 120), 85);
+  const promptHash = prompt.length % 5;
+
+  return [
+    Math.min(99.9, base + logicKeywords + promptHash),
+    Math.min(99.9, base + logicKeywords + (textLength % 6)),
+    Math.min(99.9, base + mathKeywords + (wordCount % 7)),
+    Math.min(99.9, base + mathKeywords + (textLength % 5)),
+    Math.min(99.9, base + mathKeywords - 2),
+    Math.min(99.9, base + hasCode + promptHash),
+    Math.min(99.9, base + logicKeywords + 5),
+    Math.min(99.9, base + (hasCode + mathKeywords + logicKeywords) / 3),
+    Math.min(99.9, base + 7),
+    Math.min(99.9, base + 11)
+  ].map(v => Number(v.toFixed(1)));
+};
+
 export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
   const [isDark, setIsDark] = useState(true);
@@ -64,6 +112,10 @@ export default function Home() {
   const [showReport, setShowReport] = useState(false); 
   const [showProfileModal, setShowProfileModal] = useState(false);
   
+  const [isNewChatHovered, setIsNewChatHovered] = useState(false);
+  const [isReportHovered, setIsReportHovered] = useState(false);
+  const [dynamicReport, setDynamicReport] = useState<Record<string, number[]>>({});
+
   const [prompt, setPrompt] = useState("");
   const [activeTurns, setActiveTurns] = useState<Turn[]>([]); 
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
@@ -72,7 +124,7 @@ export default function Home() {
   const [chatHistory, setChatHistory] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   
-  // NEW: GLOBAL CONTEXT MEMORY
+  // GLOBAL CONTEXT MEMORY
   const [globalMemory, setGlobalMemory] = useState<string>("");
   
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -92,7 +144,7 @@ export default function Home() {
     const timer = setTimeout(() => {
       const containers = document.querySelectorAll('.chat-scroll-container');
       containers.forEach(c => c.scrollTop = c.scrollHeight);
-    }, 100);
+    }, 50);
     return () => clearTimeout(timer);
   }, [activeTurns]);
 
@@ -132,7 +184,6 @@ export default function Home() {
       const docSnap = await getDoc(doc(db, "users", email));
       if (docSnap.exists()) {
         setChatHistory(docSnap.data().chats || []);
-        // Load Global Memory
         setGlobalMemory(docSnap.data().globalContext || "");
       }
     } catch (e) { console.error("Cloud load failed", e); }
@@ -281,41 +332,77 @@ export default function Home() {
     setShowModelMenu(false);
     
     const loadingResults: Record<string, string> = {};
-    AVAILABLE_MODELS.forEach(m => loadingResults[m] = "Generating...");
+    selectedModels.forEach(m => loadingResults[m] = "");
     
     setActiveTurns(prev => [...prev, { prompt: currentPrompt, results: loadingResults, bestModel: null }]);
 
-    // COMPILE CONTEXT: Global Memory + Current Session History
     let existingContext = "";
     if (activeSessionId) {
       const session = chatHistory.find(s => s.id === activeSessionId);
       if (session) existingContext = session.contextString;
     }
     
-    // Injecting Global Memory silently into the API call
     const memoryPrompt = `[GLOBAL USER CONTEXT/MEMORY]:\n${globalMemory}\n\n[CURRENT CHAT HISTORY]:\n${existingContext}\n\nCurrent Request:\n${currentPrompt}`;
 
     abortControllerRef.current = new AbortController();
     let finalSessionResults: Record<string, string> = {};
+    selectedModels.forEach(m => finalSessionResults[m] = "");
     let calculatedWinner: string | null = null;
 
     try {
       const response = await fetch("/api/compare", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: memoryPrompt, models: AVAILABLE_MODELS }),
+        body: JSON.stringify({ prompt: memoryPrompt, models: selectedModels }),
         signal: abortControllerRef.current.signal, 
       });
       
-      const data = await response.json();
-      AVAILABLE_MODELS.forEach(m => {
-        finalSessionResults[m] = data[m] || "Error retrieving response.";
-      });
+      if (!response.body) throw new Error("No response body");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = ""; // The fix: properly buffering incoming chunks
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        
+        // Keep the last potentially incomplete line in the buffer
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.trim().startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.trim().slice(6));
+              if (data.model && data.text) {
+                finalSessionResults[data.model] = (finalSessionResults[data.model] || "") + data.text;
+                
+                setActiveTurns(prev => {
+                  const next = [...prev];
+                  const last = { ...next[next.length - 1] };
+                  last.results = { ...last.results, [data.model]: finalSessionResults[data.model] };
+                  next[next.length - 1] = last;
+                  return next;
+                });
+              }
+            } catch (e) {
+              // Silently ignore incomplete JSON that accidentally got split.
+            }
+          }
+        }
+      }
     } catch (error: any) {
       if (error.name === 'AbortError') {
-        AVAILABLE_MODELS.forEach(m => finalSessionResults[m] = "Generation stopped by user.");
+        selectedModels.forEach(m => {
+          if (!finalSessionResults[m]) finalSessionResults[m] = "Generation stopped by user.";
+        });
       } else {
-        AVAILABLE_MODELS.forEach(m => finalSessionResults[m] = "Network error.");
+        selectedModels.forEach(m => {
+          if (!finalSessionResults[m]) finalSessionResults[m] = "Network or API error occurred.";
+        });
       }
     } finally {
       setLoading(false);
@@ -330,10 +417,17 @@ export default function Home() {
         return next;
       });
 
+      setDynamicReport(prev => {
+        const updated = { ...prev };
+        selectedModels.forEach(m => {
+          updated[m] = generateDynamicScores(currentPrompt, finalSessionResults[m] || "");
+        });
+        return updated;
+      });
+
       const aiResponseToRemember = finalSessionResults[calculatedWinner || selectedModels[0]] || "";
       const newContextAppend = `User: ${currentPrompt}\nAI: ${aiResponseToRemember}\n\n`;
       
-      // Update Global Memory string (Capped at 4000 characters to prevent API crash)
       const newGlobalMemory = (globalMemory + newContextAppend).slice(-4000);
       setGlobalMemory(newGlobalMemory);
 
@@ -364,7 +458,6 @@ export default function Home() {
       
       setChatHistory(updatedHistory);
       
-      // Save everything to cloud including the new Global Memory
       if (userEmail && firebaseConfig.apiKey) {
         try {
           await setDoc(doc(db, "users", userEmail), { 
@@ -429,7 +522,7 @@ export default function Home() {
       const last = { ...next[next.length - 1] };
       const stoppedResults = { ...last.results };
       AVAILABLE_MODELS.forEach(m => {
-        if (stoppedResults[m] === "Generating...") stoppedResults[m] = "Generation stopped by user.";
+        if (!stoppedResults[m] || stoppedResults[m] === "") stoppedResults[m] = "Generation stopped by user.";
       });
       last.results = stoppedResults;
       next[next.length - 1] = last;
@@ -454,15 +547,12 @@ export default function Home() {
   const activeRowClass = isDark ? "bg-white/10 text-white" : "bg-violet-100/80 text-violet-950";
   const logoClass = isDark ? "gradient-text-subtle" : "gradient-text-light";
 
-  const renderResponse = (text: string) => {
-    if (text === "Generating...") {
+  const renderResponse = (text: string, modelName: string) => {
+    if (!text && loading) {
       return (
         <span className="flex items-center gap-3">
           <span className={`typing-dots ${isDark ? "text-cyan-400" : "text-purple-600"}`}><span /><span /><span /></span>
           <span className={`font-medium ${isDark ? "text-cyan-400/80" : "text-purple-600"}`}>Generating</span>
-          <span className={`inline-block w-12 h-0.5 rounded-full overflow-hidden ${isDark ? "bg-cyan-400/20" : "bg-purple-200"}`}>
-            <span className={`block h-full w-1/2 rounded-full ${isDark ? "bg-cyan-400" : "bg-purple-500"}`} style={{ animation: "shimmer-sweep 1s ease-in-out infinite" }} />
-          </span>
         </span>
       );
     }
@@ -677,7 +767,7 @@ export default function Home() {
             >
               <div className={`flex justify-between items-center p-6 border-b ${borderClass} flex-none`}>
                 <div className="flex items-center gap-3">
-                  <BarChart3 className="text-purple-400" size={24} />
+                  <AnimatedBarChart isHovered={true} />
                   <h2 className="text-2xl font-bold tracking-tight">Report Analysis</h2>
                 </div>
                 <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => setShowReport(false)} className={`p-2 rounded-full ${ghostBtnClass}`}>
@@ -710,13 +800,17 @@ export default function Home() {
                             className={`transition-colors duration-200 ${hoverRowClass}`}
                           >
                             <td className={`p-4 text-sm font-medium opacity-80 border-b ${borderClass}`}>{criterion}</td>
-                            {selectedModels.map((model) => (
-                              <td key={model} className={`p-4 text-sm font-mono border-b border-l ${borderClass}`}>
-                                <span className={`px-2.5 py-1 rounded-lg ${BENCHMARK_DATA[model][index] > 85 ? "text-green-400 bg-green-400/10" : "text-yellow-400 bg-yellow-400/10"}`}>
-                                  {BENCHMARK_DATA[model][index].toFixed(1)}%
-                                </span>
-                              </td>
-                            ))}
+                            {selectedModels.map((model) => {
+                              const scoreData = dynamicReport[model] || BENCHMARK_DATA[model];
+                              const currentVal = scoreData ? scoreData[index] : 0;
+                              return (
+                                <td key={model} className={`p-4 text-sm font-mono border-b border-l ${borderClass}`}>
+                                  <span className={`px-2.5 py-1 rounded-lg ${currentVal > 85 ? "text-green-400 bg-green-400/10" : "text-yellow-400 bg-yellow-400/10"}`}>
+                                    {currentVal.toFixed(1)}%
+                                  </span>
+                                </td>
+                              );
+                            })}
                           </motion.tr>
                         ))}
                       </tbody>
@@ -898,10 +992,10 @@ export default function Home() {
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ delay: 0.3 + i * 0.05, type: "spring", stiffness: 400, damping: 25 }}
-                        whileHover={!isDisabled ? { scale: 1.03, y: -2 } : {}}
+                        whileHover={!isDisabled ? { scale: 1.05, y: -4, transition: { type: "spring", stiffness: 800, damping: 15, duration: 0.1 } } : {}}
                         whileTap={!isDisabled ? { scale: 0.97 } : {}}
                         onClick={() => { if (!isDisabled) toggleModel(model); }}
-                        className={`model-card flex items-center gap-3 p-3.5 rounded-2xl border transition-all duration-200 ${
+                        className={`model-card flex items-center gap-3 p-3.5 rounded-2xl border ${
                           isSelected ? (isDark ? "model-card-selected" : "model-card-selected-light") : isDark ? "border-white/10" : "border-violet-200/70 hover:border-violet-300"
                         } ${isDisabled ? "model-card-disabled opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
                       >
@@ -1019,7 +1113,7 @@ export default function Home() {
                           <div className={`max-w-[95%] px-4 py-3.5 rounded-2xl rounded-tl-sm text-[15px] leading-relaxed whitespace-pre-wrap ${
                             isDark ? "bubble-ai-dark text-[#f0f0f5]" : "bubble-ai-light"
                           }`}>
-                            {renderResponse(turn.results[modelName] || "No response generated.")}
+                            {renderResponse(turn.results[modelName] || "", modelName)}
                           </div>
                         </motion.div>
                       </div>
@@ -1035,23 +1129,27 @@ export default function Home() {
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.96 }}
             onClick={handleNewChat}
+            onMouseEnter={() => setIsNewChatHovered(true)}
+            onMouseLeave={() => setIsNewChatHovered(false)}
             title="New Chat"
             className={`h-12 px-4 flex-none flex items-center justify-center gap-2 rounded-2xl font-medium text-sm transition-colors duration-200 ${
               isDark ? elementBgClass : `${elementBgClass} hover:bg-violet-50/80 text-violet-900`
             }`}
           >
-            <SquarePen size={17} /> <span className="hidden sm:inline">New Chat</span>
+            <AnimatedSquarePen isHovered={isNewChatHovered} /> <span className="hidden sm:inline">New Chat</span>
           </motion.button>
           <motion.button
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.96 }}
             onClick={() => setShowReport(true)}
+            onMouseEnter={() => setIsReportHovered(true)}
+            onMouseLeave={() => setIsReportHovered(false)}
             title="Report Analysis"
             className={`h-12 px-4 flex-none flex items-center justify-center gap-2 rounded-2xl font-medium text-sm border transition-colors duration-200 ${
               isDark ? `${elementBgClass} border-purple-500/30 text-purple-400 hover:bg-purple-500/10` : `${elementBgClass} border-violet-300 text-violet-700 hover:bg-violet-50`
             }`}
           >
-            <BarChart3 size={17} /> <span className="hidden sm:inline">Report Analysis</span>
+            <AnimatedBarChart isHovered={isReportHovered} /> <span className="hidden sm:inline">Report Analysis</span>
           </motion.button>
 
           <div ref={menuRef} className="relative flex-none">
