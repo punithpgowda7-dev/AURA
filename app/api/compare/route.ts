@@ -9,7 +9,6 @@ export async function POST(request: Request) {
 
     const stream = new ReadableStream({
       async start(controller) {
-        // This is the exact format the frontend is looking for: "data: {...}\n\n"
         const sendChunk = (model: string, text: string) => {
           if (!text) return;
           const data = JSON.stringify({ model, text });
@@ -23,16 +22,19 @@ export async function POST(request: Request) {
             try {
               const genAI = new GoogleGenerativeAI(key);
               const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-              const resultStream = await model.generateContentStream(prompt);
-              for await (const chunk of resultStream) {
-                sendChunk("Gemini", chunk.text());
+              
+              // Using .stream to resolve the Type Iterator build error
+              const result = await model.generateContentStream(prompt);
+              for await (const chunk of result.stream) {
+                const chunkText = chunk.text();
+                sendChunk("Gemini", chunkText);
               }
               return;
             } catch (e) {
               console.log("Gemini Key failed, switching to backup...");
             }
           }
-          sendChunk("Gemini", "Gemini Error: Both primary and backup API keys failed.");
+          sendChunk("Gemini", "Gemini Error: Keys failed.");
         };
 
         const callGroq = async () => {
@@ -54,7 +56,7 @@ export async function POST(request: Request) {
               console.log("Groq Key failed, switching to backup...");
             }
           }
-          sendChunk("Grok", "Groq Error: Both primary and backup API keys failed.");
+          sendChunk("Grok", "Groq Error: Keys failed.");
         };
 
         const callOpenRouter = async (modelName: string) => {
@@ -73,10 +75,10 @@ export async function POST(request: Request) {
               }
               return;
             } catch (e) {
-              console.log(`OpenRouter Key failed for ${modelName}, switching to backup...`);
+              console.log(`OpenRouter Key failed for ${modelName}`);
             }
           }
-          sendChunk(modelName, `OpenRouter Error: Both primary and backup API keys failed for ${modelName}.`);
+          sendChunk(modelName, `OpenRouter Error: Keys failed for ${modelName}.`);
         };
 
         const tasks = models.map((m: string) => {

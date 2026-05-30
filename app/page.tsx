@@ -71,7 +71,6 @@ const AnimatedSquarePen = ({ isHovered }: { isHovered: boolean }) => (
 const generateDynamicScores = (prompt: string, text: string) => {
   const textLength = text.length;
   const wordCount = text.split(/\s+/).length;
-  // Safely checking for code blocks without breaking the markdown parser
   const hasCode = text.includes('\`\`\`') ? 18 : 0;
   const mathKeywords = ['+', '-', '=', '/', 'math', 'calculate', 'equation'].some(k => text.includes(k)) ? 16 : 0;
   const logicKeywords = ['therefore', 'because', 'analyze', 'reason', 'step'].some(k => text.toLowerCase().includes(k)) ? 12 : 0;
@@ -331,8 +330,9 @@ export default function Home() {
     setLoading(true);
     setShowModelMenu(false);
     
+    // INITIALIZE ALL MODELS IN BACKGROUND
     const loadingResults: Record<string, string> = {};
-    selectedModels.forEach(m => loadingResults[m] = "");
+    AVAILABLE_MODELS.forEach(m => loadingResults[m] = "");
     
     setActiveTurns(prev => [...prev, { prompt: currentPrompt, results: loadingResults, bestModel: null }]);
 
@@ -346,14 +346,15 @@ export default function Home() {
 
     abortControllerRef.current = new AbortController();
     let finalSessionResults: Record<string, string> = {};
-    selectedModels.forEach(m => finalSessionResults[m] = "");
+    AVAILABLE_MODELS.forEach(m => finalSessionResults[m] = "");
     let calculatedWinner: string | null = null;
 
     try {
       const response = await fetch("/api/compare", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: memoryPrompt, models: selectedModels }),
+        // QUERY ALL MODELS SIMULTANEOUSLY REGARDLESS OF SELECTION
+        body: JSON.stringify({ prompt: memoryPrompt, models: AVAILABLE_MODELS }),
         signal: abortControllerRef.current.signal, 
       });
       
@@ -361,7 +362,7 @@ export default function Home() {
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      let buffer = ""; // The fix: properly buffering incoming chunks
+      let buffer = ""; 
 
       while (true) {
         const { done, value } = await reader.read();
@@ -370,7 +371,6 @@ export default function Home() {
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         
-        // Keep the last potentially incomplete line in the buffer
         buffer = lines.pop() || "";
 
         for (const line of lines) {
@@ -389,18 +389,18 @@ export default function Home() {
                 });
               }
             } catch (e) {
-              // Silently ignore incomplete JSON that accidentally got split.
+              // Ignore incomplete JSON chunks silently
             }
           }
         }
       }
     } catch (error: any) {
       if (error.name === 'AbortError') {
-        selectedModels.forEach(m => {
+        AVAILABLE_MODELS.forEach(m => {
           if (!finalSessionResults[m]) finalSessionResults[m] = "Generation stopped by user.";
         });
       } else {
-        selectedModels.forEach(m => {
+        AVAILABLE_MODELS.forEach(m => {
           if (!finalSessionResults[m]) finalSessionResults[m] = "Network or API error occurred.";
         });
       }
@@ -408,7 +408,8 @@ export default function Home() {
       setLoading(false);
       abortControllerRef.current = null;
       
-      calculatedWinner = evaluateBestResponse(finalSessionResults, selectedModels);
+      // Calculate best response across ALL models
+      calculatedWinner = evaluateBestResponse(finalSessionResults, AVAILABLE_MODELS);
 
       const finalTurn = { prompt: currentPrompt, results: finalSessionResults, bestModel: calculatedWinner };
       setActiveTurns(prev => {
@@ -417,9 +418,10 @@ export default function Home() {
         return next;
       });
 
+      // Generate dynamic scores for ALL models
       setDynamicReport(prev => {
         const updated = { ...prev };
-        selectedModels.forEach(m => {
+        AVAILABLE_MODELS.forEach(m => {
           updated[m] = generateDynamicScores(currentPrompt, finalSessionResults[m] || "");
         });
         return updated;
@@ -808,7 +810,7 @@ export default function Home() {
                                   <span className={`px-2.5 py-1 rounded-lg ${currentVal > 85 ? "text-green-400 bg-green-400/10" : "text-yellow-400 bg-yellow-400/10"}`}>
                                     {currentVal.toFixed(1)}%
                                   </span>
-                                </td>
+                                 </td>
                               );
                             })}
                           </motion.tr>
